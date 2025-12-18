@@ -1,0 +1,1 @@
+python ground_truth/surrogate_equilibrium_model_generator.py --fA 0.01,0.1,0.01 --fB 0.5,5,5
