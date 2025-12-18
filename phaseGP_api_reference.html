@@ -1,0 +1,1133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>phaseGP API Reference</title>
+    <style>
+        @media print {
+            .page-break {
+                page-break-after: always;
+            }
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 210mm;
+            margin: 0 auto;
+            padding: 20mm;
+            background: white;
+        }
+        
+        h1 {
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+            font-size: 2.5em;
+            margin-top: 0;
+        }
+        
+        h2 {
+            color: #34495e;
+            border-bottom: 2px solid #ecf0f1;
+            padding-bottom: 8px;
+            margin-top: 30px;
+            font-size: 1.8em;
+        }
+        
+        h3 {
+            color: #34495e;
+            margin-top: 25px;
+            font-size: 1.4em;
+        }
+        
+        h4 {
+            color: #555;
+            margin-top: 20px;
+            font-size: 1.2em;
+        }
+        
+        code {
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+        
+        pre {
+            background: #f4f4f4;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            border-left: 4px solid #3498db;
+        }
+        
+        pre code {
+            background: none;
+            padding: 0;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        
+        th {
+            background: #3498db;
+            color: white;
+            padding: 10px;
+            text-align: left;
+        }
+        
+        td {
+            border: 1px solid #ddd;
+            padding: 10px;
+        }
+        
+        tr:nth-child(even) {
+            background: #f8f9fa;
+        }
+        
+        .parameter-table {
+            font-size: 0.95em;
+        }
+        
+        .parameter-table td:first-child {
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            width: 25%;
+        }
+        
+        .parameter-table td:nth-child(2) {
+            width: 20%;
+        }
+        
+        .nav {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 30px;
+        }
+        
+        .nav ul {
+            list-style: none;
+            padding-left: 0;
+        }
+        
+        .nav li {
+            margin: 5px 0;
+        }
+        
+        .nav a {
+            color: #3498db;
+            text-decoration: none;
+        }
+        
+        .nav a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <h1>phaseGP API Reference</h1>
+    
+    <div class="nav">
+        <h3>Navigation</h3>
+        <ul>
+            <li><a href="#models">models.py</a></li>
+            <li><a href="#source_pruner">source_pruner.py</a></li>
+            <li><a href="#utils">utils.py</a></li>
+            <li><a href="#visualization">visualization.py</a></li>
+        </ul>
+    </div>
+
+    <!-- Models Module -->
+    <h2 id="models">models.py</h2>
+    <p>Gaussian Process models for binary phase classification with active learning and transfer learning capabilities.</p>
+
+    <h3>Classes</h3>
+
+    <h4>PhaseGP</h4>
+    <p>Variational Gaussian Process model for binary phase classification.</p>
+
+    <pre><code>PhaseGP(train_x, min_scale=None, max_scale=None, kernel_choice='matern32',
+        lengthscale=0.3, learning_rate=0.1, training_iterations=120,
+        lengthscale_interval=(0.2,0.3), outputscale_interval=(1.0,4.0))</code></pre>
+
+    <table class="parameter-table">
+        <tr>
+            <th>Parameter</th>
+            <th>Type</th>
+            <th>Default</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td>train_x</td>
+            <td>torch.Tensor</td>
+            <td>required</td>
+            <td>Initial training inputs used as inducing points, shape (n, d)</td>
+        </tr>
+        <tr>
+            <td>min_scale</td>
+            <td>array-like</td>
+            <td>None</td>
+            <td>Minimum values for input scaling</td>
+        </tr>
+        <tr>
+            <td>max_scale</td>
+            <td>array-like</td>
+            <td>None</td>
+            <td>Maximum values for input scaling</td>
+        </tr>
+        <tr>
+            <td>kernel_choice</td>
+            <td>str</td>
+            <td>'matern32'</td>
+            <td>Type of kernel: 'rbf', 'matern32', or 'matern52'</td>
+        </tr>
+        <tr>
+            <td>lengthscale</td>
+            <td>float</td>
+            <td>0.3</td>
+            <td>Initial kernel lengthscale</td>
+        </tr>
+        <tr>
+            <td>learning_rate</td>
+            <td>float</td>
+            <td>0.1</td>
+            <td>Optimization learning rate</td>
+        </tr>
+        <tr>
+            <td>training_iterations</td>
+            <td>int</td>
+            <td>120</td>
+            <td>Number of training iterations</td>
+        </tr>
+        <tr>
+            <td>lengthscale_interval</td>
+            <td>tuple</td>
+            <td>(0.2, 0.3)</td>
+            <td>Prior bounds for lengthscale parameter</td>
+        </tr>
+        <tr>
+            <td>outputscale_interval</td>
+            <td>tuple</td>
+            <td>(1.0, 4.0)</td>
+            <td>Prior bounds for outputscale parameter</td>
+        </tr>
+        <tr>
+            <td>device</td>
+            <td>string</td>
+            <td>"cpu" or "cuda"</td>
+            <td>Model's device</td>
+        </tr>
+    </table>
+
+    <p><strong>Methods:</strong></p>
+    <ul>
+        <li><code>fit(train_x, train_y, epsilon=0.05, verbose=False)</code> - Train the model using variational inference</li>
+        <li><code>predict(x)</code> - Predict binary phase labels</li>
+        <li><code>predict_proba(x)</code> - Predict phase probabilities</li>
+        <li><code>acquisition(x, sampled_points=None, epsilon=0.05, vanilla_acq=False, distance_acq=True, requires_grad=False)</code> - Compute acquisition values for active learning</li>
+        <li><code>forward(x)</code> - Forward pass through the GP model</li>
+    </ul>
+
+    <h4>PhaseTransferGP</h4>
+    <p>Transfer Learning GP model for phase classification with multiple source models.</p>
+
+    <pre><code>PhaseTransferGP(source_model_list, train_x, min_scale=None, max_scale=None,
+                prior_aggregation="linear", max_adaptive_power=5,
+                explorative_threshold=0.4, kernel_choice='matern32',
+                lengthscale=0.3, learning_rate=0.1, training_iterations=120,
+                lengthscale_interval=(0.2,0.3), outputscale_interval=(1.0,4.0))</code></pre>
+
+    <p>Additional parameters beyond PhaseGP:</p>
+    <table class="parameter-table">
+        <tr>
+            <th>Parameter</th>
+            <th>Type</th>
+            <th>Default</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td>source_model_list</td>
+            <td>list</td>
+            <td>required</td>
+            <td>List of pre-trained source models</td>
+        </tr>
+        <tr>
+            <td>prior_aggregation</td>
+            <td>str</td>
+            <td>'linear'</td>
+            <td>Method for aggregating priors: 'linear' or 'highest'</td>
+        </tr>
+        <tr>
+            <td>max_adaptive_power</td>
+            <td>float</td>
+            <td>5</td>
+            <td>Maximum power for adaptive weighting</td>
+        </tr>
+        <tr>
+            <td>explorative_threshold</td>
+            <td>float</td>
+            <td>0.4</td>
+            <td>Threshold for exploration vs exploitation (0 to 1)</td>
+        </tr>
+    </table>
+
+    <p><strong>Methods:</strong></p>
+    <ul>
+        <li><code>fit(train_x, train_y, epsilon=0.05, verbose=False)</code> - Train the transfer learning model</li>
+        <li><code>predict(x)</code> - Predict binary phase labels</li>
+        <li><code>predict_proba(x)</code> - Predict phase probabilities using weighted combination</li>
+        <li><code>get_weight(x)</code> - Get the weight of the best source model at each input point</li>
+        <li><code>acquisition(x, sampled_points, epsilon=0.05, vanilla_acq=False, distance_acq=True, requires_grad=False)</code> - Compute acquisition function for transfer learning</li>
+        <li><code>forward(x)</code> - Forward pass combining source and target model predictions</li>
+    </ul>
+
+    <h4>SKPhaseTransferGP</h4>
+    <p>Transfer Learning GP with scikit-learn compatible source models. Requires scikit-learn source models to have a predict_proba() method.</p>
+    <p>Inherits from PhaseTransferGP with same parameters. Differs in handling scikit-learn model predictions.</p>
+
+    <div class="page-break"></div>
+
+    <!-- Source Pruner Module -->
+    <h2 id="source_pruner">source_pruner.py</h2>
+    <p>Source model selection algorithms for identifying diverse source models in transfer learning.</p>
+
+    <h3>Functions</h3>
+
+    <h4>source_model_pruner</h4>
+    <p>Select diverse source models from a collection based on phase diagram similarity.</p>
+
+    <pre><code>source_model_pruner(source_model_list, x_min=None, x_max=None, 
+                    y_min=None, y_max=None, grid_size=100,
+                    acc_threshold=0.9, min_intersection_regions=3, 
+                    intersection_tol=5, return_index=False)</code></pre>
+
+    <table class="parameter-table">
+        <tr>
+            <th>Parameter</th>
+            <th>Type</th>
+            <th>Default</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td>source_model_list</td>
+            <td>list</td>
+            <td>required</td>
+            <td>List of trained phase classification models</td>
+        </tr>
+        <tr>
+            <td>x_min</td>
+            <td>float</td>
+            <td>None</td>
+            <td>Minimum x-coordinate for evaluation grid</td>
+        </tr>
+        <tr>
+            <td>x_max</td>
+            <td>float</td>
+            <td>None</td>
+            <td>Maximum x-coordinate for evaluation grid</td>
+        </tr>
+        <tr>
+            <td>y_min</td>
+            <td>float</td>
+            <td>None</td>
+            <td>Minimum y-coordinate for evaluation grid</td>
+        </tr>
+        <tr>
+            <td>y_max</td>
+            <td>float</td>
+            <td>None</td>
+            <td>Maximum y-coordinate for evaluation grid</td>
+        </tr>
+        <tr>
+            <td>grid_size</td>
+            <td>int</td>
+            <td>100</td>
+            <td>Number of grid points in each dimension</td>
+        </tr>
+        <tr>
+            <td>acc_threshold</td>
+            <td>float</td>
+            <td>0.9</td>
+            <td>Similarity threshold for pixel-wise accuracy</td>
+        </tr>
+        <tr>
+            <td>min_intersection_regions</td>
+            <td>int</td>
+            <td>3</td>
+            <td>Maximum disagreement regions for similarity</td>
+        </tr>
+        <tr>
+            <td>intersection_tol</td>
+            <td>int</td>
+            <td>5</td>
+            <td>Boundary tolerance in pixels</td>
+        </tr>
+        <tr>
+            <td>return_index</td>
+            <td>bool</td>
+            <td>False</td>
+            <td>If True, also return indices of selected models</td>
+        </tr>
+    </table>
+
+    <p><strong>Returns:</strong> List of selected diverse models, or tuple (selected_models, selected_indices) if return_index=True</p>
+
+    <h4>similarity_checker</h4>
+    <p>Check if two phase diagrams are similar based on multiple criteria.</p>
+
+    <pre><code>similarity_checker(phase_diagram1, phase_diagram2, acc_threshold=0.8,
+                   min_intersection_regions=3, intersection_tol=5)</code></pre>
+
+    <table class="parameter-table">
+        <tr>
+            <th>Parameter</th>
+            <th>Type</th>
+            <th>Default</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td>phase_diagram1</td>
+            <td>np.ndarray</td>
+            <td>required</td>
+            <td>First binary phase diagram</td>
+        </tr>
+        <tr>
+            <td>phase_diagram2</td>
+            <td>np.ndarray</td>
+            <td>required</td>
+            <td>Second binary phase diagram</td>
+        </tr>
+        <tr>
+            <td>acc_threshold</td>
+            <td>float</td>
+            <td>0.8</td>
+            <td>Minimum required pixel-wise accuracy (0-1)</td>
+        </tr>
+        <tr>
+            <td>min_intersection_regions</td>
+            <td>int</td>
+            <td>3</td>
+            <td>Maximum allowed disagreement regions</td>
+        </tr>
+        <tr>
+            <td>intersection_tol</td>
+            <td>int</td>
+            <td>5</td>
+            <td>Dilation radius for boundary tolerance (pixels)</td>
+        </tr>
+    </table>
+
+    <p><strong>Returns:</strong> bool - True if diagrams are similar, False otherwise</p>
+
+    <h4>source_diagram_pruner</h4>
+    <p>Select diverse phase diagrams from a collection based on similarity.</p>
+
+    <pre><code>source_diagram_pruner(phase_diagram_list, acc_threshold=0.9,
+                      min_intersection_regions=3, intersection_tol=5)</code></pre>
+
+    <table class="parameter-table">
+        <tr>
+            <th>Parameter</th>
+            <th>Type</th>
+            <th>Default</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td>phase_diagram_list</td>
+            <td>list</td>
+            <td>required</td>
+            <td>List of 2D binary phase diagram arrays</td>
+        </tr>
+        <tr>
+            <td>acc_threshold</td>
+            <td>float</td>
+            <td>0.9</td>
+            <td>Similarity threshold for pixel-wise accuracy</td>
+        </tr>
+        <tr>
+            <td>min_intersection_regions</td>
+            <td>int</td>
+            <td>3</td>
+            <td>Maximum disagreement regions for similarity</td>
+        </tr>
+        <tr>
+            <td>intersection_tol</td>
+            <td>int</td>
+            <td>5</td>
+            <td>Boundary tolerance in pixels</td>
+        </tr>
+    </table>
+
+    <p><strong>Returns:</strong> list - Selected diverse phase diagrams</p>
+
+    <div class="page-break"></div>
+
+    <!-- Utils Module -->
+    <h2 id="utils">utils.py</h2>
+    <p>Utility functions for data processing, active learning, and general operations.</p>
+
+    <h3>Functions</h3>
+
+    <h4>ensure_tensor</h4>
+    <p>Convert input to PyTorch tensor if not already.</p>
+
+    <pre><code>ensure_tensor(x, dtype=torch.float32)</code></pre>
+
+    <table class="parameter-table">
+        <tr>
+            <th>Parameter</th>
+            <th>Type</th>
+            <th>Default</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td>x</td>
+            <td>array-like</td>
+            <td>required</td>
+            <td>Input data (array-like, tensor, or scalar)</td>
+        </tr>
+        <tr>
+            <td>dtype</td>
+            <td>torch.dtype</td>
+            <td>torch.float32</td>
+            <td>Desired tensor data type</td>
+        </tr>
+        <tr>
+            <td>device</td>
+            <td>string</td>
+            <td>"cpu" or "cuda"</td>
+            <td>Desired device</td>
+        </tr>
+    </table>
+
+    <p><strong>Returns:</strong> torch.Tensor - Input as a PyTorch tensor</p>
+
+    <h4>ensure_numpy</h4>
+    <p>Convert input to NumPy array if not already.</p>
+
+    <pre><code>ensure_numpy(x)</code></pre>
+
+    <table class="parameter-table">
+        <tr>
+            <th>Parameter</th>
+            <th>Type</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td>x</td>
+            <td>tensor or array-like</td>
+            <td>Input data</td>
+        </tr>
+    </table>
+
+    <p><strong>Returns:</strong> np.ndarray - Input as a NumPy array</p>
+
+    <h4>brute_sample_new_points</h4>
+    <p>Select new sampling points using brute force evaluation of acquisition function with spacing constraints when batch sampling.</p>
+
+    <pre><code>brute_sample_new_points(model, candidates, sampled_points=None, n_sample=1,
+                  frac_distance_thresh=0.1, epsilon=0.05, 
+                  vanilla_acq=False, distance_acq=True, return_index=False)</code></pre>
+
+    <table class="parameter-table">
+        <tr>
+            <th>Parameter</th>
+            <th>Type</th>
+            <th>Default</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td>model</td>
+            <td>GP model</td>
+            <td>required</td>
+            <td>GP model with acquisition method</td>
+        </tr>
+        <tr>
+            <td>candidates</td>
+            <td>torch.Tensor</td>
+            <td>required</td>
+            <td>Candidate points for selection, shape (n, d)</td>
+        </tr>
+        <tr>
+            <td>sampled_points</td>
+            <td>torch.Tensor</td>
+            <td>None</td>
+            <td>Previously sampled points, shape (m, d)</td>
+        </tr>
+        <tr>
+            <td>n_sample</td>
+            <td>int</td>
+            <td>1</td>
+            <td>Number of points to select</td>
+        </tr>
+        <tr>
+            <td>frac_distance_thresh</td>
+            <td>float</td>
+            <td>0.1</td>
+            <td>Minimum distance between points as fraction of domain</td>
+        </tr>
+        <tr>
+            <td>epsilon</td>
+            <td>float</td>
+            <td>0.05</td>
+            <td>Small value for numerical stability in acquisition</td>
+        </tr>
+        <tr>
+            <td>vanilla_acq</td>
+            <td>bool</td>
+            <td>False</td>
+            <td>Whether to use vanilla acquisition function</td>
+        </tr>
+        <tr>
+            <td>distance_acq</td>
+            <td>bool</td>
+            <td>True</td>
+            <td>Whether to include distance-based acquisition component</td>
+        </tr>
+        <tr>
+            <td>return_index</td>
+            <td>bool</td>
+            <td>False</td>
+            <td>If True, also return indices of selected points</td>
+        </tr>
+    </table>
+
+    <p><strong>Returns:</strong> torch.Tensor or tuple - Selected points, or (selected_points, selected_indices) if return_index=True</p>
+
+    <h4>gradient_sample_new_points</h4>
+    <p>Select new sampling points using gradient-based optimization of acquisition function with spacing constraints when batch sampling.</p>
+
+    <pre><code>gradient_sample_new_points(model, sampled_points=None, n_sample=1,
+                           frac_distance_thresh=0.1, epsilon=0.05,
+                           vanilla_acq=False, distance_acq=True,
+                           num_restarts=10, raw_samples=512)</code></pre>
+
+    <table class="parameter-table">
+        <tr>
+            <th>Parameter</th>
+            <th>Type</th>
+            <th>Default</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td>model</td>
+            <td>GP model</td>
+            <td>required</td>
+            <td>GP model with acquisition method</td>
+        </tr>
+        <tr>
+            <td>sampled_points</td>
+            <td>torch.Tensor</td>
+            <td>None</td>
+            <td>Previously sampled points, shape (m, d)</td>
+        </tr>
+        <tr>
+            <td>n_sample</td>
+            <td>int</td>
+            <td>1</td>
+            <td>Number of points to select</td>
+        </tr>
+        <tr>
+            <td>frac_distance_thresh</td>
+            <td>float</td>
+            <td>0.1</td>
+            <td>Minimum distance between points as fraction of domain</td>
+        </tr>
+        <tr>
+            <td>epsilon</td>
+            <td>float</td>
+            <td>0.05</td>
+            <td>Small value for numerical stability in acquisition</td>
+        </tr>
+        <tr>
+            <td>vanilla_acq</td>
+            <td>bool</td>
+            <td>False</td>
+            <td>Whether to use vanilla acquisition function</td>
+        </tr>
+        <tr>
+            <td>distance_acq</td>
+            <td>bool</td>
+            <td>True</td>
+            <td>Whether to include distance-based acquisition component</td>
+        </tr>
+        <tr>
+            <td>num_restarts</td>
+            <td>int</td>
+            <td>10</td>
+            <td>Number of random restarts for optimization</td>
+        </tr>
+        <tr>
+            <td>raw_samples</td>
+            <td>int</td>
+            <td>512</td>
+            <td>Number of raw samples for initialization</td>
+        </tr>
+    </table>
+
+    <p><strong>Returns:</strong> torch.Tensor - Selected points, shape (n_sample, d)</p>
+
+    <h4>get_grid</h4>
+    <p>Generate a regular 2D grid for phase diagram evaluation.</p>
+
+    <pre><code>get_grid(x_min=0, x_max=1, grid_size=100, return_coordinates=False,
+         y_min=None, y_max=None)</code></pre>
+
+    <table class="parameter-table">
+        <tr>
+            <th>Parameter</th>
+            <th>Type</th>
+            <th>Default</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td>x_min</td>
+            <td>float or list</td>
+            <td>0</td>
+            <td>Minimum x-coordinate(s). If list, creates N-D grid.</td>
+        </tr>
+        <tr>
+            <td>x_max</td>
+            <td>float or list</td>
+            <td>1</td>
+            <td>Maximum coordinate(s). If list, creates N-D grid.</td>
+        </tr>
+        <tr>
+            <td>grid_size</td>
+            <td>int</td>
+            <td>100</td>
+            <td>Number of points along each axis</td>
+        </tr>
+        <tr>
+            <td>return_coordinates</td>
+            <td>bool</td>
+            <td>False</td>
+            <td>If True, also return coordinate vectors</td>
+        </tr>
+        <tr>
+            <td>y_min</td>
+            <td>float</td>
+            <td>None</td>
+            <td>Minimum y-coordinate (only for 2D, defaults to x_min)</td>
+        </tr>
+        <tr>
+            <td>y_max</td>
+            <td>float</td>
+            <td>None</td>
+            <td>Maximum y-coordinate (only for 2D, defaults to x_max)</td>
+        </tr>
+        <tr>
+            <td>device</td>
+            <td>string</td>
+            <td>"cpu" or "cuda"</td>
+            <td>Desired device</td>
+        </tr>
+    </table>
+
+    <p><strong>Returns:</strong> torch.Tensor or tuple:
+            - If return_coordinates=False: Grid points, shape (grid_size^N, N)
+            - If return_coordinates=True: (grid_points, coord_list)
+              where coord_list is a list of coordinate vectors for each dimension</p>
+
+    <h4>scaler</h4>
+    <p>Scale data to [0,1] range using min-max normalization.</p>
+
+    <pre><code>scaler(x, min_scale, max_scale)</code></pre>
+
+    <table class="parameter-table">
+        <tr>
+            <th>Parameter</th>
+            <th>Type</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td>x</td>
+            <td>torch.Tensor</td>
+            <td>Input data to scale</td>
+        </tr>
+        <tr>
+            <td>min_scale</td>
+            <td>torch.Tensor</td>
+            <td>Minimum values for each dimension</td>
+        </tr>
+        <tr>
+            <td>max_scale</td>
+            <td>torch.Tensor</td>
+            <td>Maximum values for each dimension</td>
+        </tr>
+    </table>
+
+    <p><strong>Returns:</strong> torch.Tensor - Scaled data in [0, 1] range</p>
+
+    <h4>set_seeds</h4>
+    <p>Set random seeds for reproducibility across PyTorch and NumPy.</p>
+
+    <pre><code>set_seeds(seed)</code></pre>
+
+    <table class="parameter-table">
+        <tr>
+            <th>Parameter</th>
+            <th>Type</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td>seed</td>
+            <td>int</td>
+            <td>Random seed value</td>
+        </tr>
+    </table>
+
+    <div class="page-break"></div>
+
+    <!-- Visualization Module -->
+    <h2 id="visualization">visualization.py</h2>
+    <p>Visualization tools for phase diagrams, probability maps, and acquisition functions.</p>
+
+    <h3>Functions</h3>
+
+    <h4>model_diagram_plot</h4>
+    <p>Generate various 2D plots from a trained GP model.</p>
+
+    <pre><code>model_diagram_plot(model, plot_type="phase", x_min=None, x_max=None,
+                   y_min=None, y_max=None, grid_size=100, 
+                   sampled_points=None, phase_labels=None, title=None,
+                   xlabel="Parameter 1", ylabel="Parameter 2", 
+                   figsize=(7,6), cmap=None, plot_boundary=False)</code></pre>
+
+    <table class="parameter-table">
+        <tr>
+            <th>Parameter</th>
+            <th>Type</th>
+            <th>Default</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td>model</td>
+            <td>GP model</td>
+            <td>required</td>
+            <td>Trained GP model with predict/predict_proba/acquisition methods</td>
+        </tr>
+        <tr>
+            <td>plot_type</td>
+            <td>str</td>
+            <td>"phase"</td>
+            <td>Type of plot ('phase', 'probability', 'acquisition')</td>
+        </tr>
+        <tr>
+            <td>x_min</td>
+            <td>float</td>
+            <td>None</td>
+            <td>Minimum x-coordinate for plot domain</td>
+        </tr>
+        <tr>
+            <td>x_max</td>
+            <td>float</td>
+            <td>None</td>
+            <td>Maximum x-coordinate for plot domain</td>
+        </tr>
+        <tr>
+            <td>y_min</td>
+            <td>float</td>
+            <td>None</td>
+            <td>Minimum y-coordinate for plot domain</td>
+        </tr>
+        <tr>
+            <td>y_max</td>
+            <td>float</td>
+            <td>None</td>
+            <td>Maximum y-coordinate for plot domain</td>
+        </tr>
+        <tr>
+            <td>grid_size</td>
+            <td>int</td>
+            <td>100</td>
+            <td>Number of grid points in each dimension</td>
+        </tr>
+        <tr>
+            <td>sampled_points</td>
+            <td>torch.Tensor</td>
+            <td>None</td>
+            <td>Already sampled points (for acquisition plot)</td>
+        </tr>
+        <tr>
+            <td>phase_labels</td>
+            <td>list</td>
+            <td>None</td>
+            <td>Names for phase 0 and phase 1</td>
+        </tr>
+        <tr>
+            <td>title</td>
+            <td>str</td>
+            <td>None</td>
+            <td>Plot title</td>
+        </tr>
+        <tr>
+            <td>xlabel</td>
+            <td>str</td>
+            <td>"Parameter 1"</td>
+            <td>Label for x-axis</td>
+        </tr>
+        <tr>
+            <td>ylabel</td>
+            <td>str</td>
+            <td>"Parameter 2"</td>
+            <td>Label for y-axis</td>
+        </tr>
+        <tr>
+            <td>figsize</td>
+            <td>tuple</td>
+            <td>(7, 6)</td>
+            <td>Figure size as (width, height) in inches</td>
+        </tr>
+        <tr>
+            <td>cmap</td>
+            <td>str</td>
+            <td>None</td>
+            <td>Colormap name (defaults based on plot_type)</td>
+        </tr>
+        <tr>
+            <td>plot_boundary</td>
+            <td>bool</td>
+            <td>False</td>
+            <td>Whether to show phase boundaries as contour lines</td>
+        </tr>
+    </table>
+
+    <p><strong>Returns:</strong> tuple (fig, ax) - Matplotlib figure and axes objects</p>
+
+    <h4>phase_diagram_plot</h4>
+    <p>Plot a phase diagram with optional contour lines at phase boundaries.</p>
+
+    <pre><code>phase_diagram_plot(phase_diagram, x_coords=None, y_coords=None,
+                   phase_labels=None, title=None, xlabel="Parameter 1",
+                   ylabel="Parameter 2", figsize=(7,6), cmap='coolwarm',
+                   plot_boundary=False)</code></pre>
+
+    <table class="parameter-table">
+        <tr>
+            <th>Parameter</th>
+            <th>Type</th>
+            <th>Default</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td>phase_diagram</td>
+            <td>np.ndarray</td>
+            <td>required</td>
+            <td>2D array of phase indices, shape (n_y, n_x)</td>
+        </tr>
+        <tr>
+            <td>x_coords</td>
+            <td>array-like</td>
+            <td>None</td>
+            <td>X-axis coordinate values</td>
+        </tr>
+        <tr>
+            <td>y_coords</td>
+            <td>array-like</td>
+            <td>None</td>
+            <td>Y-axis coordinate values</td>
+        </tr>
+        <tr>
+            <td>phase_labels</td>
+            <td>list</td>
+            <td>None</td>
+            <td>Names for each phase</td>
+        </tr>
+        <tr>
+            <td>title</td>
+            <td>str</td>
+            <td>None</td>
+            <td>Plot title</td>
+        </tr>
+        <tr>
+            <td>xlabel</td>
+            <td>str</td>
+            <td>"Parameter 1"</td>
+            <td>X-axis label</td>
+        </tr>
+        <tr>
+            <td>ylabel</td>
+            <td>str</td>
+            <td>"Parameter 2"</td>
+            <td>Y-axis label</td>
+        </tr>
+        <tr>
+            <td>figsize</td>
+            <td>tuple</td>
+            <td>(7, 6)</td>
+            <td>Figure size (width, height) in inches</td>
+        </tr>
+        <tr>
+            <td>cmap</td>
+            <td>str/colormap</td>
+            <td>'coolwarm'</td>
+            <td>Colormap for phases</td>
+        </tr>
+        <tr>
+            <td>plot_boundary</td>
+            <td>bool</td>
+            <td>False</td>
+            <td>Whether to draw black contour lines at boundaries</td>
+        </tr>
+    </table>
+
+    <p><strong>Returns:</strong> tuple (fig, ax) - Matplotlib figure and axes objects</p>
+
+    <h4>phase_diagram_probability_plot</h4>
+    <p>Plot phase probabilities with decision boundary at p=0.5.</p>
+
+    <pre><code>phase_diagram_probability_plot(phase_probabilities, x_coords=None,
+                                y_coords=None, title=None,
+                                xlabel="Parameter 1", ylabel="Parameter 2",
+                                figsize=(7,6), cmap='viridis',
+                                plot_boundary=True)</code></pre>
+
+    <table class="parameter-table">
+        <tr>
+            <th>Parameter</th>
+            <th>Type</th>
+            <th>Default</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td>phase_probabilities</td>
+            <td>np.ndarray</td>
+            <td>required</td>
+            <td>2D array of probabilities [0,1], shape (n_y, n_x)</td>
+        </tr>
+        <tr>
+            <td>x_coords</td>
+            <td>array-like</td>
+            <td>None</td>
+            <td>X-axis coordinate values</td>
+        </tr>
+        <tr>
+            <td>y_coords</td>
+            <td>array-like</td>
+            <td>None</td>
+            <td>Y-axis coordinate values</td>
+        </tr>
+        <tr>
+            <td>title</td>
+            <td>str</td>
+            <td>None</td>
+            <td>Plot title</td>
+        </tr>
+        <tr>
+            <td>xlabel</td>
+            <td>str</td>
+            <td>"Parameter 1"</td>
+            <td>X-axis label</td>
+        </tr>
+        <tr>
+            <td>ylabel</td>
+            <td>str</td>
+            <td>"Parameter 2"</td>
+            <td>Y-axis label</td>
+        </tr>
+        <tr>
+            <td>figsize</td>
+            <td>tuple</td>
+            <td>(7, 6)</td>
+            <td>Figure size (width, height) in inches</td>
+        </tr>
+        <tr>
+            <td>cmap</td>
+            <td>str/colormap</td>
+            <td>'viridis'</td>
+            <td>Colormap for probability values</td>
+        </tr>
+        <tr>
+            <td>plot_boundary</td>
+            <td>bool</td>
+            <td>True</td>
+            <td>Whether to highlight the p=0.5 decision boundary</td>
+        </tr>
+    </table>
+
+    <p><strong>Returns:</strong> tuple (fig, ax) - Matplotlib figure and axes objects</p>
+
+    <h4>phase_acquisition_plot</h4>
+    <p>Plot acquisition function values for active learning visualization.</p>
+
+    <pre><code>phase_acquisition_plot(acquisition_values, x_coords=None, y_coords=None,
+                       title=None, xlabel="Parameter 1",
+                       ylabel="Parameter 2", figsize=(7, 6),
+                       cmap='plasma', show_maximum=True)</code></pre>
+
+    <table class="parameter-table">
+        <tr>
+            <th>Parameter</th>
+            <th>Type</th>
+            <th>Default</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td>acquisition_values</td>
+            <td>np.ndarray</td>
+            <td>required</td>
+            <td>2D array of acquisition values, shape (n_y, n_x)</td>
+        </tr>
+        <tr>
+            <td>x_coords</td>
+            <td>array-like</td>
+            <td>None</td>
+            <td>X-axis coordinate values</td>
+        </tr>
+        <tr>
+            <td>y_coords</td>
+            <td>array-like</td>
+            <td>None</td>
+            <td>Y-axis coordinate values</td>
+        </tr>
+        <tr>
+            <td>title</td>
+            <td>str</td>
+            <td>None</td>
+            <td>Plot title</td>
+        </tr>
+        <tr>
+            <td>xlabel</td>
+            <td>str</td>
+            <td>"Parameter 1"</td>
+            <td>X-axis label</td>
+        </tr>
+        <tr>
+            <td>ylabel</td>
+            <td>str</td>
+            <td>"Parameter 2"</td>
+            <td>Y-axis label</td>
+        </tr>
+        <tr>
+            <td>figsize</td>
+            <td>tuple</td>
+            <td>(7, 6)</td>
+            <td>Figure size (width, height) in inches</td>
+        </tr>
+        <tr>
+            <td>cmap</td>
+            <td>str/colormap</td>
+            <td>'plasma'</td>
+            <td>Colormap for acquisition values</td>
+        </tr>
+        <tr>
+            <td>show_maximum</td>
+            <td>bool</td>
+            <td>True</td>
+            <td>Whether to mark the maximum acquisition point</td>
+        </tr>
+    </table>
+
+    <p><strong>Returns:</strong> tuple (fig, ax) - Matplotlib figure and axes objects</p>
+
+</body>
+</html>
