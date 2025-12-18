@@ -42,12 +42,12 @@ gudhi >= 3.4.0  # For topological analysis
 ### Installation
 Install phaseGP using pip:
 ```bash
-pip install git+https://github.com/Darmator/phaseGP.git
+pip install git+https://github.com/BigChemistry-RobotLab/phaseGP.git
 ```
 
 Or install from source:
 ```bash
-git clone https://github.com/Darmator/phaseGP.git
+git clone https://github.com/BigChemistry-RobotLab/phaseGP.git
 cd phaseGP
 pip install -e .
 ```
