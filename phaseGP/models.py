@@ -618,10 +618,6 @@ class PhaseTransferGP(torch.nn.Module):
                 weight = self.get_weight(x)
                 target_f_pred = self.target_model(x)
 
-        #with torch.no_grad(), gpytorch.settings.fast_pred_var():
-        #    weight = self.get_weight(x)
-        #    target_f_pred = self.target_model(x)
-
         # Transform weight to exploration weight [0,1]
         # 0 when weight < (1 - threshold): exploration/exploitation tradeoff
         # Linear increase above threshold: increasing exploration
