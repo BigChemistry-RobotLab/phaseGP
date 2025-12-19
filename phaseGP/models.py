@@ -156,6 +156,7 @@ class PhaseGP(gpytorch.models.ApproximateGP):
             gpytorch.distributions.MultivariateNormal: GP prior distribution
         """
         with torch.no_grad():
+            x = x.clone() # Create a copy to avoid modifying original input
             # Scale non-inducing point inputs to [0,1] range
             x[self.inducing_points_size:] = scaler(
                 x[self.inducing_points_size:], 
