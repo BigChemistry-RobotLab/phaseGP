@@ -168,9 +168,6 @@ def brute_sample_new_points(model, candidates, sampled_points=None, n_sample = 1
         # Stop when we have enough points
         if len(selected_indices) == n_sample:
             break
-    
-    #if(n_sample == 1):
-    #    selected_indices = selected_indices[0]
 
     if(return_index):
         return candidates[selected_indices], selected_indices
