@@ -30,7 +30,7 @@ The library consists of five main modules:
 phaseGP requires Python 3.7+ and the following dependencies:
 ```
 numpy >= 1.19.0
-torch >= 1.8.0
+torch >= 1.12.0
 gpytorch >= 1.4.0
 botorch >= 0.8.0
 scikit-learn >= 0.24.0
