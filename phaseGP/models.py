@@ -366,7 +366,8 @@ class PhaseTransferGP(torch.nn.Module):
         
         #Move source models to the correct device
         for source_model in self.source_model_list:
-            source_model._move_to_device(self.device)
+            if hasattr(source_model, '_move_to_device'):
+                source_model._move_to_device(self.device)
 
         # Create weight models for each source model
         # These learn how reliable each source is at different input locations
@@ -809,7 +810,7 @@ class SKPhaseTransferGP(PhaseTransferGP):
         Returns:
             torch.Tensor: Probability predictions, shape (n,)
         """
-        x = ensure_tensor(x)
+        x = ensure_tensor(x, device=self.device)
         with torch.no_grad(), gpytorch.settings.fast_pred_var():
             y_pred_mean = self(x)
 
