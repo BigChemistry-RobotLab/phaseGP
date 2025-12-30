@@ -4,7 +4,7 @@ A Gaussian Process library for efficient phase diagram mapping using active lear
 
 ## Introduction
 
-**phaseGP** is a Python library for implementing active learning loops for efficient phase diagram mapping using Gaussian Process (GP) classification with active learning and transfer learning capabilities. Based on the algorithms described in our paper "PhaseTransfer: A transfer learning framework for efficient phase diagram mapping", this library provides state-of-the-art methods for exploring phase spaces with minimal computational cost.
+**phaseGP** is a Python library for implementing active learning loops for efficient phase diagram mapping using Gaussian Process (GP) classification with active learning and transfer learning capabilities. Based on the algorithms described in our paper "[PhaseTransfer: A transfer learning framework for efficient phase diagram mapping](https://chemrxiv.org/engage/chemrxiv/article-details/69452ef9afb3b11118176197)", this library provides state-of-the-art methods for exploring phase spaces with minimal computational cost.
 
 The library includes the PhaseTransfer method, a novel transfer learning approach that enables efficient knowledge reuse from related phase diagrams, significantly reducing the number of expensive evaluations needed to map new systems.
 
@@ -260,6 +260,4 @@ The data from our experimental results is available in [benchmarks/paper_reprodu
 
 If you use phaseGP in your research, please cite:
 
-```bibtex
-[Citation to be added]
-```
+1. González-García E, Markvoort AJ, Erkamp N, de Greef TFA. PhaseTransfer: A transfer learning framework for efficient phase diagram mapping. ChemRxiv. 2025; doi:10.26434/chemrxiv-2025-0r2f3  This content is a preprint and has not been peer-reviewed.
