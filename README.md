@@ -49,7 +49,7 @@ Or install from source:
 ```bash
 git clone https://github.com/BigChemistry-RobotLab/phaseGP.git
 cd phaseGP
-pip install -e .
+pip install .
 ```
 
 ### Basic Import
