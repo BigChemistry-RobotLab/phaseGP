@@ -34,6 +34,9 @@ import warnings
 
 from .utils import get_grid, ensure_numpy
 
+__all__ = ["tolerant_phase_disagreement", "num_connected_regions", "num_holes", "topology_metrics", "similarity_checker",
+           "source_model_pruner", "source_diagram_pruner"]
+
 def tolerant_phase_disagreement(A, B, radius=1):
     """
     Compute disagreement between two phase diagrams with spatial tolerance.

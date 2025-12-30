@@ -23,10 +23,10 @@ import gpytorch
 from .priors import MultiGPMeanModule, SKMultiGPMeanModule
 from .utils import ensure_tensor, get_base_kernel, scaler
 
+__all__ = ['PhaseGP', 'PhaseTransferGP', 'SKPhaseTransferGP', 'train_gp_model']
 # =============================================================================
 # Unified GP Model
 # =============================================================================
-
 
 class PhaseGP(gpytorch.models.ApproximateGP):
     """

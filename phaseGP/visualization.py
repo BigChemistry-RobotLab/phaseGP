@@ -24,6 +24,7 @@ import matplotlib
 
 from .utils import get_grid, ensure_numpy
 
+__all__ = ["model_diagram_plot", "phase_diagram_plot", "phase_diagram_probability_plot", "phase_acquisition_plot"]
 # =============================================================================
 # Model-Based Visualization
 # =============================================================================

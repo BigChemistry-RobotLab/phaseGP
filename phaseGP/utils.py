@@ -23,6 +23,8 @@ import numpy as np
 from functools import partial
 from botorch.optim import optimize_acqf
 
+__all__ = ["ensure_tensor", "ensure_numpy","brute_sample_new_points", "gradient_sample_new_points", "get_grid",
+           "scaler", "set_seeds"]
 # =============================================================================
 # Data Type Conversion Utilities
 # =============================================================================
@@ -134,7 +136,10 @@ def brute_sample_new_points(model, candidates, sampled_points=None, n_sample = 1
     acq_values = model.acquisition(candidates, sampled_points, epsilon=epsilon, vanilla_acq=vanilla_acq, distance_acq=distance_acq)
 
     if n_sample <= 0:
-        return torch.tensor([], dtype=torch.long)
+        if return_index:
+            return torch.tensor([], dtype=candidates.dtype, device=candidates.device).reshape(0, candidates.shape[1]), []
+        else:
+            return torch.tensor([], dtype=candidates.dtype, device=candidates.device).reshape(0, candidates.shape[1])
     
     # Limit selection to available candidates
     n_sample = min(n_sample, len(candidates))

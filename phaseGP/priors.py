@@ -20,6 +20,7 @@ Version: 0.1.0
 import torch
 import gpytorch
 
+__all__ = ["GPMeanModule", "MultiGPMeanModule", "SKMultiGPMeanModule"]
 
 class GPMeanModule(gpytorch.means.Mean):
     """
