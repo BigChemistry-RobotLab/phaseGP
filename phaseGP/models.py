@@ -155,14 +155,25 @@ class PhaseGP(gpytorch.models.ApproximateGP):
         Returns:
             gpytorch.distributions.MultivariateNormal: GP prior distribution
         """
-        with torch.no_grad():
-            x = x.clone() # Create a copy to avoid modifying original input
+        #with torch.no_grad():
+        #    x = x.clone() # Create a copy to avoid modifying original input
             # Scale non-inducing point inputs to [0,1] range
-            x[self.inducing_points_size:] = scaler(
-                x[self.inducing_points_size:], 
-                self.min_scale, 
-                self.max_scale
-            )
+        #    x[self.inducing_points_size:] = scaler(
+        #        x[self.inducing_points_size:], 
+        #        self.min_scale, 
+        #        self.max_scale
+        #    )
+        x = x.clone()
+
+        # Scale, but detach scaling from gradient
+        scaled_x = scaler(
+            x[self.inducing_points_size:], 
+            self.min_scale, 
+            self.max_scale
+        ).detach()
+
+        x[self.inducing_points_size:] = scaled_x
+            
         mean_x = self.mean_module(x)
         covar_x = self.covar_module(x)
         return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
