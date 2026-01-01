@@ -155,14 +155,6 @@ class PhaseGP(gpytorch.models.ApproximateGP):
         Returns:
             gpytorch.distributions.MultivariateNormal: GP prior distribution
         """
-        #with torch.no_grad():
-        #    x = x.clone() # Create a copy to avoid modifying original input
-            # Scale non-inducing point inputs to [0,1] range
-        #    x[self.inducing_points_size:] = scaler(
-        #        x[self.inducing_points_size:], 
-        #        self.min_scale, 
-        #        self.max_scale
-        #    )
         x = x.clone()
 
         # Scale, but detach scaling from gradient
@@ -410,7 +402,7 @@ class PhaseTransferGP(torch.nn.Module):
             device = self.device
         ).to(device)
 
-    def forward(self, x):
+    def forward(self, x, return_source=False):
         """
         Forward pass combining source and target model predictions.
         
@@ -422,12 +414,17 @@ class PhaseTransferGP(torch.nn.Module):
         
         Args:
             x (torch.Tensor): Input points of shape (n, d)
+            return_source (bool): If True, returns additional source predictions
             
         Returns:
-            tuple: (y_pred_mean, f_pred_mean, f_pred_var)
-                - y_pred_mean: Combined probability predictions
-                - f_pred_mean: Combined latent function mean
-                - f_pred_var: Combined latent function variance
+            If return_source = False:
+                tuple: (y_pred_mean, f_pred_mean, f_pred_var)
+                    - y_pred_mean: Combined probability predictions
+                    - f_pred_mean: Combined latent function mean
+                    - f_pred_var: Combined latent function variance
+            else:
+                tuple: (y_pred_mean, f_pred_mean, f_pred_var, source_y_mean)
+                    - source_y_mean: Source probability predictions
         """
         # Get target model predictions
         target_f_pred = self.target_model(x)
@@ -480,7 +477,10 @@ class PhaseTransferGP(torch.nn.Module):
         f_pred_var = weight*source_f_var + (1-weight)*target_f_pred.variance
         f_pred_mean = weight*source_f_mean + (1-weight)*target_f_pred.mean
 
-        return y_pred_mean, f_pred_mean, f_pred_var
+        if return_source:
+            return y_pred_mean, f_pred_mean, f_pred_var, source_y_mean
+        else:
+            return y_pred_mean, f_pred_mean, f_pred_var
     
     def fit(self, train_x, train_y, epsilon=0.05, verbose=False):
         """
@@ -541,21 +541,31 @@ class PhaseTransferGP(torch.nn.Module):
         y_pred = self.predict_proba(x)
         return (y_pred > 0.5).int()
     
-    def predict_proba(self, x):
+    def predict_proba(self, x, return_source=False):
         """
         Predict phase probabilities using weighted combination.
         
         Args:
             x (torch.Tensor): Input points of shape (n, d)
+            return_source (bool): If True, returns additional source predictions
             
         Returns:
-            torch.Tensor: Probability of phase 1 for each point, shape (n,) in the model's device
+            If return_source = False:
+                torch.Tensor: Probability of phase 1 for each point, shape (n,) in the model's device
+            If return_source = True:
+                tuple: (y_pred_mean, source_y_mean)
+                    - y_pred_mean: torch.Tensor: Probability of phase 1 for each point, shape (n,) in the model's device
+                    - source_y_mean: torch.Tensor: Probability of phase 1 for each point in the source model
         """
         x = ensure_tensor(x, device=self.device)
+        
         with torch.no_grad(), gpytorch.settings.fast_pred_var():
-            y_pred_mean, f_pred_mean, f_pred_var = self(x)
-
-        return y_pred_mean
+            y_pred_mean, f_pred_mean, f_pred_var, source_y_mean = self(x, return_source=True)
+            
+        if return_source:
+            return y_pred_mean, source_y_mean
+        else:
+            return y_pred_mean
     
     def get_weight(self, x, requires_grad=False):
         """
