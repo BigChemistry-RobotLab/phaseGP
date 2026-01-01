@@ -272,7 +272,7 @@ def _acq_batch_distance_penalty(X, model, selected_candidates, sampled_points=No
         return base_acquisition
     
     # Compute minimum distance to selected candidates
-    dists = torch.cdist(X, selected_candidates)
+    dists = torch.cdist(scaler(X, model.min_scale, model.max_scale), scaler(selected_candidates, model.min_scale, model.max_scale)) #Calculate distances in the scaled parameter space
     closest_dist = dists.min(dim=1).values
     
     # Create a "Soft" Penalty using ReLU
