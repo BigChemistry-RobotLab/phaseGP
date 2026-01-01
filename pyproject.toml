@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "phaseGP"
-version = "0.1.0"
+version = "0.2.0"
 description = "Phase diagram mapping using Gaussian processes with support for transfer learning"
 authors = [{name = "Eduardo Gonzalez Garcia", email = "e.gonzalez.garcia@tue.nl"}]
 dependencies = [
