@@ -717,7 +717,7 @@ class SKPhaseTransferGP(PhaseTransferGP):
             device = device
         )
     
-    def forward(self, x):
+    def forward(self, x, return_source=False):
         """
         Forward pass with scikit-learn source models.
         
@@ -725,10 +725,15 @@ class SKPhaseTransferGP(PhaseTransferGP):
         and handling potential 2D output (for binary classification).
         
         Args:
-            x (torch.Tensor): Input points of shape (n, d)
+            x (torch.Tensor): Input points of shape (n, d
+            return_source (bool): If True, returns additional source predictions
             
         Returns:
-            torch.Tensor: Combined probability predictions, shape (n,)
+            If return_source = False:
+                torch.Tensor: Combined probability predictions, shape (n,)
+                
+            tuple: (y_pred_mean, source_y_mean)
+                    - source_y_mean: Source probability predictions
         """
         x = ensure_tensor(x, device=self.device)
         # Get target model predictions
@@ -771,7 +776,10 @@ class SKPhaseTransferGP(PhaseTransferGP):
         weight = weight**power
         y_pred_mean = weight*source_y_mean + (1-weight)*target_y_pred.mean
 
-        return y_pred_mean
+        if return_source:
+            y_pred_mean, source_y_mean
+        else:
+            return y_pred_mean
     
     def fit(self, train_x, train_y, epsilon=0.05, verbose=False):
         """
@@ -817,21 +825,30 @@ class SKPhaseTransferGP(PhaseTransferGP):
         self.target_model.fit(train_x, train_y, epsilon=epsilon)
 
     
-    def predict_proba(self, x):
+    def predict_proba(self, x, return_source=False):
         """
-        Predict probabilities with sklearn source models.
+        Predict phase probabilities using weighted combination.
         
         Args:
             x (torch.Tensor): Input points of shape (n, d)
+            return_source (bool): If True, returns additional source predictions
             
         Returns:
-            torch.Tensor: Probability predictions, shape (n,)
+            If return_source = False:
+                torch.Tensor: Probability of phase 1 for each point, shape (n,) in the model's device
+            If return_source = True:
+                tuple: (y_pred_mean, source_y_mean)
+                    - y_pred_mean: torch.Tensor: Probability of phase 1 for each point, shape (n,) in the model's device
+                    - source_y_mean: torch.Tensor: Probability of phase 1 for each point in the source model
         """
         x = ensure_tensor(x, device=self.device)
         with torch.no_grad(), gpytorch.settings.fast_pred_var():
-            y_pred_mean = self(x)
+            y_pred_mean, source_y_mean = self(x, return_source=True)
 
-        return y_pred_mean
+        if return_source:
+            y_pred_mean, source_y_mean
+        else:
+            return y_pred_mean
 
 def train_gp_model(model, train_x, train_y, learning_rate, training_iterations, verbose = False, device="cpu"):
     """
