@@ -402,7 +402,7 @@ class PhaseTransferGP(torch.nn.Module):
             device = self.device
         ).to(device)
 
-    def forward(self, x, return_source=False):
+    def forward(self, x, return_all_data=False):
         """
         Forward pass combining source and target model predictions.
         
@@ -414,17 +414,19 @@ class PhaseTransferGP(torch.nn.Module):
         
         Args:
             x (torch.Tensor): Input points of shape (n, d)
-            return_source (bool): If True, returns additional source predictions
+            return_all_data (bool): If True, returns all components for final prediction
             
         Returns:
-            If return_source = False:
+            If return_all_data = False:
                 tuple: (y_pred_mean, f_pred_mean, f_pred_var)
                     - y_pred_mean: Combined probability predictions
                     - f_pred_mean: Combined latent function mean
                     - f_pred_var: Combined latent function variance
             else:
-                tuple: (y_pred_mean, f_pred_mean, f_pred_var, source_y_mean)
+                tuple: (y_pred_mean, f_pred_mean, f_pred_var, (source_y_mean, target_y_pred.mean, weight))
                     - source_y_mean: Source probability predictions
+                    - target_y_pred.mean: target probability predictions
+                    - weight: weight predictions
         """
         # Get target model predictions
         target_f_pred = self.target_model(x)
@@ -477,8 +479,8 @@ class PhaseTransferGP(torch.nn.Module):
         f_pred_var = weight*source_f_var + (1-weight)*target_f_pred.variance
         f_pred_mean = weight*source_f_mean + (1-weight)*target_f_pred.mean
 
-        if return_source:
-            return y_pred_mean, f_pred_mean, f_pred_var, source_y_mean
+        if return_all_data:
+            return y_pred_mean, f_pred_mean, f_pred_var, (source_y_mean, target_y_pred.mean, weight)
         else:
             return y_pred_mean, f_pred_mean, f_pred_var
     
@@ -541,29 +543,29 @@ class PhaseTransferGP(torch.nn.Module):
         y_pred = self.predict_proba(x)
         return (y_pred > 0.5).int()
     
-    def predict_proba(self, x, return_source=False):
+    def predict_proba(self, x, return_all_data=False):
         """
         Predict phase probabilities using weighted combination.
         
         Args:
             x (torch.Tensor): Input points of shape (n, d)
-            return_source (bool): If True, returns additional source predictions
+            return_all_data (bool): If True, returns all components for final prediction
             
         Returns:
-            If return_source = False:
+            If return_all_data = False:
                 torch.Tensor: Probability of phase 1 for each point, shape (n,) in the model's device
-            If return_source = True:
-                tuple: (y_pred_mean, source_y_mean)
+            If return_all_data = True:
+                tuple: (y_pred_mean, pred_data)
                     - y_pred_mean: torch.Tensor: Probability of phase 1 for each point, shape (n,) in the model's device
-                    - source_y_mean: torch.Tensor: Probability of phase 1 for each point in the source model
+                    - pred_data: tuple: (source_y_mean, target_y_pred.mean, weight)
         """
         x = ensure_tensor(x, device=self.device)
         
         with torch.no_grad(), gpytorch.settings.fast_pred_var():
-            y_pred_mean, f_pred_mean, f_pred_var, source_y_mean = self(x, return_source=True)
+            y_pred_mean, f_pred_mean, f_pred_var, pred_data = self(x, return_all_data=True)
             
-        if return_source:
-            return y_pred_mean, source_y_mean
+        if return_all_data:
+            return y_pred_mean, pred_data
         else:
             return y_pred_mean
     
@@ -717,7 +719,7 @@ class SKPhaseTransferGP(PhaseTransferGP):
             device = device
         )
     
-    def forward(self, x, return_source=False):
+    def forward(self, x, return_all_data=False):
         """
         Forward pass with scikit-learn source models.
         
@@ -726,14 +728,17 @@ class SKPhaseTransferGP(PhaseTransferGP):
         
         Args:
             x (torch.Tensor): Input points of shape (n, d
-            return_source (bool): If True, returns additional source predictions
+            return_all_data (bool): If True, returns all components for final prediction
             
         Returns:
-            If return_source = False:
+            If return_all_data = False:
                 torch.Tensor: Combined probability predictions, shape (n,)
-                
-            tuple: (y_pred_mean, source_y_mean)
-                    - source_y_mean: Source probability predictions
+            
+            else:
+                tuple: (y_pred_mean, f_pred_mean, f_pred_var, (source_y_mean, target_y_pred.mean, weight))
+                        - source_y_mean: Source probability predictions
+                        - target_y_pred.mean: target probability predictions
+                        - weight: weight predictions
         """
         x = ensure_tensor(x, device=self.device)
         # Get target model predictions
@@ -776,8 +781,8 @@ class SKPhaseTransferGP(PhaseTransferGP):
         weight = weight**power
         y_pred_mean = weight*source_y_mean + (1-weight)*target_y_pred.mean
 
-        if return_source:
-            y_pred_mean, source_y_mean
+        if return_all_data:
+            y_pred_mean, (source_y_mean, target_y_pred.mean, weight)
         else:
             return y_pred_mean
     
@@ -825,28 +830,28 @@ class SKPhaseTransferGP(PhaseTransferGP):
         self.target_model.fit(train_x, train_y, epsilon=epsilon)
 
     
-    def predict_proba(self, x, return_source=False):
+    def predict_proba(self, x, return_all_data=False):
         """
         Predict phase probabilities using weighted combination.
         
         Args:
             x (torch.Tensor): Input points of shape (n, d)
-            return_source (bool): If True, returns additional source predictions
+            return_all_data (bool): If True, returns additional source predictions
             
         Returns:
-            If return_source = False:
+            If return_all_data = False:
                 torch.Tensor: Probability of phase 1 for each point, shape (n,) in the model's device
-            If return_source = True:
-                tuple: (y_pred_mean, source_y_mean)
+            If return_all_data = True:
+                tuple: (y_pred_mean, pred_data)
                     - y_pred_mean: torch.Tensor: Probability of phase 1 for each point, shape (n,) in the model's device
-                    - source_y_mean: torch.Tensor: Probability of phase 1 for each point in the source model
+                    - pred_data: tuple: (source_y_mean, target_y_pred.mean, weight)
         """
         x = ensure_tensor(x, device=self.device)
         with torch.no_grad(), gpytorch.settings.fast_pred_var():
-            y_pred_mean, source_y_mean = self(x, return_source=True)
+            y_pred_mean, pred_data = self(x, return_all_data=True)
 
-        if return_source:
-            y_pred_mean, source_y_mean
+        if return_all_data:
+            y_pred_mean, pred_data
         else:
             return y_pred_mean
 
