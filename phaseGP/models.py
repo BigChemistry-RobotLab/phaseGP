@@ -851,7 +851,7 @@ class SKPhaseTransferGP(PhaseTransferGP):
             y_pred_mean, pred_data = self(x, return_all_data=True)
 
         if return_all_data:
-            y_pred_mean, pred_data
+            return y_pred_mean, pred_data
         else:
             return y_pred_mean
 
