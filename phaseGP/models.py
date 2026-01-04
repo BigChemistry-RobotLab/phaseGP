@@ -782,7 +782,7 @@ class SKPhaseTransferGP(PhaseTransferGP):
         y_pred_mean = weight*source_y_mean + (1-weight)*target_y_pred.mean
 
         if return_all_data:
-            y_pred_mean, (source_y_mean, target_y_pred.mean, weight)
+            return y_pred_mean, (source_y_mean, target_y_pred.mean, weight)
         else:
             return y_pred_mean
     
