@@ -22,6 +22,7 @@ import torch.nn.functional as F
 import numpy as np
 from functools import partial
 from botorch.optim import optimize_acqf
+from botorch.optim.initializers import gen_batch_initial_conditions
 
 __all__ = ["ensure_tensor", "ensure_numpy","brute_sample_new_points", "gradient_sample_new_points", "get_grid",
            "scaler", "set_seeds"]
@@ -180,7 +181,7 @@ def brute_sample_new_points(model, candidates, sampled_points=None, n_sample = 1
         return candidates[selected_indices]
 
 def gradient_sample_new_points(model, sampled_points=None, n_sample = 1 ,frac_distance_thresh = 0.1,epsilon=0.05, vanilla_acq=False, distance_acq=True,
-                               num_restarts = 10, raw_samples = 512):
+                               num_restarts = 10, raw_samples = 512, inequality_constrain=None, ic_generator=None):
     """
     Select new sampling points using gradient-based acquisition optimization with spacing constraints when batch sampling.
     
@@ -215,14 +216,38 @@ def gradient_sample_new_points(model, sampled_points=None, n_sample = 1 ,frac_di
     for i in range(n_sample):
         acq_batch_distance_penalty = partial(_acq_batch_distance_penalty, model=model,selected_candidates=selected_candidates ,sampled_points=sampled_points, frac_distance_thresh = frac_distance_thresh,
                                              epsilon = epsilon, vanilla_acq = vanilla_acq, distance_acq = distance_acq)
+        #If there are no constrains to apply
+        if inequality_constrain is None:
+                candidate, value = optimize_acqf(
+                acq_function=acq_batch_distance_penalty,
+                bounds=bounds,
+                q=1,
+                num_restarts=num_restarts,  # Increase for better global search
+                raw_samples=raw_samples
+            )
+        else:
+            #If there is no default generator for the constrains that want to be applied
+            if ic_generator is None:
+                candidate, value = optimize_acqf(
+                acq_function=acq_batch_distance_penalty,
+                bounds=bounds,
+                q=1,
+                num_restarts=num_restarts,  # Increase for better global search
+                raw_samples=raw_samples,
+                nonlinear_inequality_constraints=[(inequality_constrain, True)], #Defined inequality
+                ic_generator=gen_batch_initial_conditions
+                )
+            else:
+                candidate, value = optimize_acqf(
+                acq_function=acq_batch_distance_penalty,
+                bounds=bounds,
+                q=1,
+                num_restarts=num_restarts,  # Increase for better global search
+                raw_samples=raw_samples,
+                nonlinear_inequality_constraints=[(inequality_constrain, True)], #Defined inequality
+                ic_generator=ic_generator
+            )
 
-        candidate, value = optimize_acqf(
-            acq_function=acq_batch_distance_penalty,
-            bounds=bounds,
-            q=1,
-            num_restarts=num_restarts,  # Increase for better global search
-            raw_samples=raw_samples,
-        )
 
         selected_candidates = torch.cat([selected_candidates, candidate], dim=0)
 
