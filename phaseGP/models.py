@@ -49,6 +49,7 @@ class PhaseGP(gpytorch.models.ApproximateGP):
         mean_module: GP mean function (constant by default)
         covar_module: GP covariance function with specified kernel
         likelihood: Bernoulli likelihood for binary classification
+        scale_inputs: whether to internally scale the inputs of the model
         device: Device where the model is stored (cpu or cuda)
     """
     def __init__(
@@ -62,6 +63,7 @@ class PhaseGP(gpytorch.models.ApproximateGP):
             training_iterations = 120,
             lengthscale_interval = (0.2,0.3),
             outputscale_interval = (1.0,4.0),
+            scale_inputs = True,
             device = "cpu"
             ):
         """
@@ -73,6 +75,7 @@ class PhaseGP(gpytorch.models.ApproximateGP):
         self.training_iterations = training_iterations
         self.lengthscale_interval = lengthscale_interval
         self.outputscale_interval = outputscale_interval
+        self.scale_inputs = scale_inputs
         self.device = device
         
         # Set up input scaling parameters for normalization to [0,1]
@@ -155,16 +158,17 @@ class PhaseGP(gpytorch.models.ApproximateGP):
         Returns:
             gpytorch.distributions.MultivariateNormal: GP prior distribution
         """
-        x = x.clone()
 
-        # Scale, but detach scaling from gradient
-        scaled_x = scaler(
-            x[self.inducing_points_size:], 
-            self.min_scale, 
-            self.max_scale
-        ).detach()
+        if self.scale_inputs:
+            x = x.clone()
+            # Scale, but detach scaling from gradient
+            scaled_x = scaler(
+                x[self.inducing_points_size:], 
+                self.min_scale, 
+                self.max_scale
+            ).detach()
 
-        x[self.inducing_points_size:] = scaled_x
+            x[self.inducing_points_size:] = scaled_x
             
         mean_x = self.mean_module(x)
         covar_x = self.covar_module(x)
@@ -312,6 +316,7 @@ class PhaseTransferGP(torch.nn.Module):
             training_iterations = 120,
             lengthscale_interval = (0.2,0.3),
             outputscale_interval = (1.0,4.0),
+            scale_inputs = True,
             device = "cpu"
             ):
         """
@@ -331,6 +336,7 @@ class PhaseTransferGP(torch.nn.Module):
             training_iterations (int): Number of training iterations
             lengthscale_interval (tuple): Prior bounds for lengthscale
             outputscale_interval (tuple): Prior bounds for outputscale
+            scale_inputs: whether to internally scale the inputs of the model
             device: Device where the model is stored (cpu or cuda)
         """
         super().__init__()
@@ -349,6 +355,7 @@ class PhaseTransferGP(torch.nn.Module):
         self.lengthscale_interval = lengthscale_interval
         self.outputscale_interval = outputscale_interval
         self.explorative_threshold = explorative_threshold
+        self.scale_inputs = scale_inputs
         self.device = device
         # Set up input scaling parameters
         if(min_scale is None):
@@ -385,6 +392,7 @@ class PhaseTransferGP(torch.nn.Module):
             training_iterations = training_iterations,
             lengthscale_interval = lengthscale_interval,
             outputscale_interval = outputscale_interval,
+            scale_inputs = scale_inputs,
             device = self.device
         ).to(device) for i in range(n_models)]
         
@@ -399,6 +407,7 @@ class PhaseTransferGP(torch.nn.Module):
             training_iterations = training_iterations,
             lengthscale_interval = lengthscale_interval,
             outputscale_interval = outputscale_interval,
+            scale_inputs = scale_inputs,
             device = self.device
         ).to(device)
 
@@ -855,6 +864,13 @@ class SKPhaseTransferGP(PhaseTransferGP):
         else:
             return y_pred_mean
 
+    def chain_predict(self, x):
+        x = ensure_tensor(x, device=self.device)
+        ensemble_predict, all_data = self.predict_proba(x, return_all_data=True)
+        source_predicit = all_data[0]
+        pred_points = torch.min(ensemble_predict, source_predicit)
+        pred_points = (pred_points > 0.5).int()
+        return pred_points
 def train_gp_model(model, train_x, train_y, learning_rate, training_iterations, verbose = False, device="cpu"):
     """
     Train a Gaussian Process model using variational inference.
