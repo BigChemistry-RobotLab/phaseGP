@@ -104,20 +104,20 @@ def get_base_kernel(kernel_choice, lengthscale=None, **kwargs):
 # Active Learning Utilities
 # =============================================================================
 
-def brute_sample_new_points(model, candidates, sampled_points=None, n_sample = 1 ,frac_distance_thresh = 0.1,epsilon=0.05, vanilla_acq=False, distance_acq=True, return_index = False):
+def brute_sample_new_points(model, candidates, sampled_points=None, n_sample = 1 ,frac_distance_thresh = 0.1,epsilon=0.05, vanilla_acq=False, distance_acq=True, return_index = False, acquisition_fn=None):
     """
     Select new sampling points using acquisition function with spacing constraints when batch sampling.
-    
+
     This function implements the active learning selection strategy, choosing
     points that maximize the acquisition function while maintaining minimum
     spacing between selected points through brue sampling. The spacing constraint prevents clustering
     of samples and ensures better coverage of the phase diagram.
-    
+
     The selection process:
     1. Compute acquisition values for all candidates
     2. Sort candidates by acquisition value (descending)
     3. Greedily select points that satisfy spacing constraints
-    
+
     Args:
         model: GP model with acquisition method
         candidates (torch.Tensor): Candidate points for selection, shape (n, d)
@@ -127,14 +127,21 @@ def brute_sample_new_points(model, candidates, sampled_points=None, n_sample = 1
         epsilon (float): Small value for numerical stability in acquisition
         vanilla_acq (bool): Whether to use vanilla acquisition function
         return_index (bool): If True, also return indices of selected points
-        
+        acquisition_fn (callable, optional): Custom acquisition function with signature
+            acquisition_fn(model, x) -> torch.Tensor of shape (n,).
+            If None, uses model.acquisition. Use functools.partial or a closure to
+            capture additional arguments (e.g. sampled_points) if needed.
+
     Returns:
         torch.Tensor or tuple:
             - If return_index=False: Selected points, shape (n_sample, d)
             - If return_index=True: (selected_points, selected_indices)
     """
     # Compute acquisition values for all candidates
-    acq_values = model.acquisition(candidates, sampled_points, epsilon=epsilon, vanilla_acq=vanilla_acq, distance_acq=distance_acq)
+    if acquisition_fn is None:
+        acq_values = model.acquisition(candidates, sampled_points, epsilon=epsilon, vanilla_acq=vanilla_acq, distance_acq=distance_acq)
+    else:
+        acq_values = acquisition_fn(model, candidates)
 
     if n_sample <= 0:
         if return_index:
@@ -181,20 +188,20 @@ def brute_sample_new_points(model, candidates, sampled_points=None, n_sample = 1
         return candidates[selected_indices]
 
 def gradient_sample_new_points(model, sampled_points=None, n_sample = 1 ,frac_distance_thresh = 0.1,epsilon=0.05, vanilla_acq=False, distance_acq=True,
-                               num_restarts = 10, raw_samples = 512, inequality_constrain=None, ic_generator=None):
+                               num_restarts = 10, raw_samples = 512, inequality_constrain=None, ic_generator=None, acquisition_fn=None):
     """
     Select new sampling points using gradient-based acquisition optimization with spacing constraints when batch sampling.
-    
+
     This function implements active learning selection using gradient-based optimization
     to find points that maximize the acquisition function while maintaining minimum
     spacing between selected points (when batch sampling). The optimization uses BoTorch's optimize_acqf
     to search the continuous domain.
-    
+
     The selection process:
     1. Define acquisition function with distance penalty for spacing
     2. Iteratively optimize to find next best point
     3. Add selected point and repeat until n_sample points selected
-    
+
     Args:
         model: GP model with acquisition method
         sampled_points (torch.Tensor, optional): Previously sampled points, shape (m, d)
@@ -205,7 +212,12 @@ def gradient_sample_new_points(model, sampled_points=None, n_sample = 1 ,frac_di
         distance_acq (bool): Whether to include distance-based acquisition component
         num_restarts (int): Number of random restarts for optimization
         raw_samples (int): Number of raw samples for initialization
-        
+        acquisition_fn (callable, optional): Custom acquisition function with signature
+            acquisition_fn(model, x) -> torch.Tensor of shape (n,).
+            If None, uses model.acquisition. The function must support gradient
+            computation (no torch.no_grad()). Use functools.partial or a closure to
+            capture additional arguments (e.g. sampled_points) if needed.
+
     Returns:
         torch.Tensor: Selected points, shape (n_sample, d)
     """
@@ -214,8 +226,8 @@ def gradient_sample_new_points(model, sampled_points=None, n_sample = 1 ,frac_di
     selected_candidates = torch.empty((0, bounds.size(1)), device=model.device)
 
     for i in range(n_sample):
-        acq_batch_distance_penalty = partial(_acq_batch_distance_penalty, model=model,selected_candidates=selected_candidates ,sampled_points=sampled_points, frac_distance_thresh = frac_distance_thresh,
-                                             epsilon = epsilon, vanilla_acq = vanilla_acq, distance_acq = distance_acq)
+        acq_batch_distance_penalty = partial(_acq_batch_distance_penalty, model=model, selected_candidates=selected_candidates, sampled_points=sampled_points, frac_distance_thresh=frac_distance_thresh,
+                                             epsilon=epsilon, vanilla_acq=vanilla_acq, distance_acq=distance_acq, acquisition_fn=acquisition_fn)
         #If there are no constrains to apply
         if inequality_constrain is None:
                 candidate, value = optimize_acqf(
@@ -253,21 +265,21 @@ def gradient_sample_new_points(model, sampled_points=None, n_sample = 1 ,frac_di
 
     return selected_candidates
 
-def _acq_batch_distance_penalty(X, model, selected_candidates, sampled_points=None, frac_distance_thresh = 0.1, epsilon=0.05, vanilla_acq=False, distance_acq=True):
+def _acq_batch_distance_penalty(X, model, selected_candidates, sampled_points=None, frac_distance_thresh = 0.1, epsilon=0.05, vanilla_acq=False, distance_acq=True, acquisition_fn=None):
     """
     Compute acquisition function with soft distance penalty when selecting a batch.
-    
+
     This internal helper function calculates a penalized acquisition value that
     discourages selecting points too close to already-selected candidates (when sampling a batch). The
     penalty uses a soft ReLU-based formulation to maintain differentiability
     for gradient-based optimization.
-    
+
     The acquisition value is computed as:
         final_acq = base_acquisition - penalty
-    
+
     where penalty grows as points get closer to selected_candidates within the
     threshold distance.
-    
+
     Args:
         X (torch.Tensor): Candidate points to evaluate, shape (batch_size, d) or (batch_size, 1, d)
         model: GP model with acquisition method
@@ -277,10 +289,13 @@ def _acq_batch_distance_penalty(X, model, selected_candidates, sampled_points=No
         epsilon (float): Small value for numerical stability in acquisition
         vanilla_acq (bool): Whether to use vanilla acquisition function
         distance_acq (bool): Whether to include distance-based acquisition component
-        
+        acquisition_fn (callable, optional): Custom acquisition function with signature
+            acquisition_fn(model, x) -> torch.Tensor of shape (n,). Must support
+            gradient computation. If None, uses model.acquisition.
+
     Returns:
         torch.Tensor: Penalized acquisition values, shape (batch_size,)
-        
+
     Note:
         This is a private function intended only for use within gradient_sample_new_points.
         The penalty_strength parameter is hardcoded to 1000.0 for consistent behavior.
@@ -289,9 +304,12 @@ def _acq_batch_distance_penalty(X, model, selected_candidates, sampled_points=No
     # Handle dimensions for BoTorch (batch_size, q=1, d) -> (batch_size, d)
     if X.ndim == 3:
         X = X.squeeze(1)
-    
+
     # Calculate Base Acquisition enabling gradients for the optimizer
-    base_acquisition = model.acquisition(X, sampled_points, requires_grad=True, epsilon=epsilon, vanilla_acq=vanilla_acq, distance_acq=distance_acq)
+    if acquisition_fn is None:
+        base_acquisition = model.acquisition(X, sampled_points, requires_grad=True, epsilon=epsilon, vanilla_acq=vanilla_acq, distance_acq=distance_acq)
+    else:
+        base_acquisition = acquisition_fn(model, X)
 
     if len(selected_candidates) == 0:
         return base_acquisition
