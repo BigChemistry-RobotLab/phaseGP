@@ -130,6 +130,10 @@ for iteration in range(n_iterations):
         min_scale=[0, 0],
         max_scale=[1, 1],
         )
+
+    # Train the model
+    model.fit(X_train, y_train)
+
     # Select new points using acquisition function
     # Note: For problems with more than 3 dimensions, it is recommended to use
     # gradient_sample_new_points instead of brute_sample_new_points for better efficiency
@@ -146,9 +150,6 @@ for iteration in range(n_iterations):
     # Add to training set
     X_train = torch.cat([X_train, new_points])
     y_train = torch.cat([y_train, new_labels])
-    
-    # Retrain model
-    model.fit(X_train, y_train)
     
     print(f"Iteration {iteration+1}: Added {len(new_points)} points")
 
