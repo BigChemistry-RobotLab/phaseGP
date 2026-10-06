@@ -24,25 +24,40 @@ The library consists of five main modules:
 - `utils.py` - Utility functions for data processing and active learning
 - `visualization.py` - Plotting and visualization tools
 
+## What's New in 0.2.0
+
+- **Correct input scaling in informed priors.** Mean functions that wrap other models (the transfer learning priors, or a `PhaseGP` used as the prior of another `PhaseGP`) are now evaluated at the correct locations when `min_scale`/`max_scale` are not 0/1. Previously the inputs were scaled twice.
+- **Training on the 0/1 labels.** `PhaseGP.fit` no longer applies a logit transformation to the labels before training, so the predicted probabilities are meaningful. The `epsilon` argument is kept only for backward compatibility.
+- **Labels treated as certain measurements.** The new `SharpBernoulliLikelihood` uses the probit link p(y=1|f) = Φ(β·f) with `likelihood_sharpness=6.0` by default. Set `likelihood_sharpness=1.0` for the standard Bernoulli likelihood, e.g. when the labels are noisy.
+- **Transfer learning weights.** `PhaseTransferGP` and `SKPhaseTransferGP` read the source weights with `weight_readout_sharpness=1.0`, the scale on which the weighting formulas were tuned.
+- **scikit-learn sources.** `SKMultiGPMeanModule` maps source probabilities to the latent space with the probit (inverse normal CDF) instead of the logit.
+
+Results obtained with 0.2.0 differ numerically from those obtained with earlier versions. See the [API reference](phaseGP_api_reference.pdf) for the new parameters.
+
 ## Installation and Setup
 
 ### Requirements
 phaseGP requires Python 3.7+ and the following dependencies:
 ```
-numpy >= 1.19.0
+numpy >= 1.21.0
 torch >= 1.12.0
-gpytorch >= 1.4.0
+gpytorch >= 1.9.0
 botorch >= 0.8.0
-scikit-learn >= 0.24.0
-matplotlib >= 3.3.0
-scipy >= 1.6.0
-gudhi >= 3.4.0  # For topological analysis
+scikit-learn >= 1.1.0
+matplotlib >= 3.5.0
+scipy >= 1.8.0
+gudhi >= 3.6.0  # For topological analysis
 ```
 
 ### Installation
 Install phaseGP using pip:
 ```bash
 pip install git+https://github.com/BigChemistry-RobotLab/phaseGP.git
+```
+
+To install a specific version, add its tag:
+```bash
+pip install git+https://github.com/BigChemistry-RobotLab/phaseGP.git@v0.2.0
 ```
 
 Or install from source:
@@ -246,9 +261,14 @@ For a more detailed example refer to the GPU sine benchmark notebook under the f
 
 For detailed API reference, please refer to the [documentation PDF](phaseGP_api_reference.pdf).
 
-For detailed examples refer to the notebooks [Sine Wave Benchmak](benchmarks/demos/sine_benchmark.ipynb), [3-Component Biological Condensate BenchMark](benchmarks/demos/biological_condensate_benchmark.ipynb) and [Supramolecular Copolymerization Benchmark](benchmarks/demos/supramolecular_copolymerization_benchmark.ipynb) inside the folder [benchmarks/demos](benchmarks/demos)
+For detailed examples refer to the notebooks [Sine Wave Benchmark](benchmarks/demos/sine_benchmark.ipynb), [3-Component Biological Condensate Benchmark](benchmarks/demos/biological_condensate_benchmark.ipynb) and [Supramolecular Copolymerization Benchmark](benchmarks/demos/supramolecular_copolymerization_benchmark.ipynb) inside the folder [benchmarks/demos](benchmarks/demos)
 
 ## Paper Reproducibility
+
+The error curves stored in this repository and reported in the paper were computed with phaseGP versions prior to 0.2.0. To reproduce them exactly, install the last version before 0.2.0:
+```bash
+pip install git+https://github.com/BigChemistry-RobotLab/phaseGP.git@1049c60
+```
 
 To recalculate the error curves for all models (except GP-ECA), run the following script "calculate_error_curves.sh" while inside the folder [benchmarks/paper_reproducibility]
 

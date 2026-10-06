@@ -130,15 +130,46 @@
         .nav a:hover {
             text-decoration: underline;
         }
+
+        .note {
+            background: #eef6fc;
+            border-left: 4px solid #3498db;
+            padding: 10px 15px;
+            margin: 20px 0;
+            border-radius: 3px;
+        }
+
+        .note ul {
+            margin: 5px 0;
+        }
+
+        .version {
+            color: #777;
+            margin-top: -10px;
+        }
     </style>
 </head>
 <body>
     <h1>phaseGP API Reference</h1>
-    
+    <p class="version">Version 0.2.0</p>
+
+    <div class="note">
+        <strong>Changes in 0.2.0</strong>
+        <ul>
+            <li>Informed priors (<code>MultiGPMeanModule</code>, <code>SKMultiGPMeanModule</code>, and mean modules that wrap another <code>PhaseGP</code>) are now evaluated at the correct input locations when <code>min_scale</code>/<code>max_scale</code> are not 0/1 (inputs were previously scaled twice).</li>
+            <li><code>PhaseGP.fit</code> trains on the 0/1 labels directly; the previous logit transformation of the labels was removed (<code>epsilon</code> is kept only for backward compatibility).</li>
+            <li>New <code>SharpBernoulliLikelihood</code>: labels are treated as certain measurements (<code>likelihood_sharpness=6.0</code> by default).</li>
+            <li><code>PhaseTransferGP</code> and <code>SKPhaseTransferGP</code> read the source weights with <code>weight_readout_sharpness=1.0</code>, the scale on which the weighting formulas were tuned.</li>
+            <li><code>SKMultiGPMeanModule</code> maps scikit-learn probabilities to the latent space with the probit (inverse normal CDF) instead of the logit.</li>
+        </ul>
+        Results obtained with 0.2.0 differ numerically from those obtained with earlier versions.
+    </div>
+
     <div class="nav">
         <h3>Navigation</h3>
         <ul>
             <li><a href="#models">models.py</a></li>
+            <li><a href="#priors">priors.py</a></li>
             <li><a href="#source_pruner">source_pruner.py</a></li>
             <li><a href="#utils">utils.py</a></li>
             <li><a href="#visualization">visualization.py</a></li>
@@ -154,10 +185,10 @@
     <h4>PhaseGP</h4>
     <p>Variational Gaussian Process model for binary phase classification.</p>
 
-    <pre><code>PhaseGP(train_x, min_scale=None, max_scale=None, kernel_choice='matern32',
+    <pre><code>PhaseGP(train_x, min_scale=None, max_scale=None, kernel_choice=&#x27;matern32&#x27;,
         lengthscale=0.3, learning_rate=0.1, training_iterations=120,
-        lengthscale_interval=(0.2,0.3), outputscale_interval=(1.0,4.0))</code></pre>
-
+        lengthscale_interval=(0.2,0.3), outputscale_interval=(1.0,4.0),
+        scale_inputs=True, device=&quot;cpu&quot;, likelihood_sharpness=6.0)</code></pre>
     <table class="parameter-table">
         <tr>
             <th>Parameter</th>
@@ -175,25 +206,25 @@
             <td>min_scale</td>
             <td>array-like</td>
             <td>None</td>
-            <td>Minimum values for input scaling</td>
+            <td>Minimum values for input scaling (0 if None)</td>
         </tr>
         <tr>
             <td>max_scale</td>
             <td>array-like</td>
             <td>None</td>
-            <td>Maximum values for input scaling</td>
+            <td>Maximum values for input scaling (1 if None)</td>
         </tr>
         <tr>
             <td>kernel_choice</td>
             <td>str</td>
-            <td>'matern32'</td>
-            <td>Type of kernel: 'rbf', 'matern32', or 'matern52'</td>
+            <td>&#x27;matern32&#x27;</td>
+            <td>Type of kernel: &#x27;rbf&#x27;, &#x27;matern32&#x27;, or &#x27;matern52&#x27;</td>
         </tr>
         <tr>
             <td>lengthscale</td>
             <td>float</td>
             <td>0.3</td>
-            <td>Initial kernel lengthscale</td>
+            <td>Initial kernel lengthscale (in scaled [0,1] units)</td>
         </tr>
         <tr>
             <td>learning_rate</td>
@@ -220,31 +251,43 @@
             <td>Prior bounds for outputscale parameter</td>
         </tr>
         <tr>
+            <td>scale_inputs</td>
+            <td>bool</td>
+            <td>True</td>
+            <td>Whether to internally scale the inputs to [0,1] using min_scale and max_scale</td>
+        </tr>
+        <tr>
             <td>device</td>
-            <td>string</td>
-            <td>"cpu" or "cuda"</td>
-            <td>Model's device</td>
+            <td>str</td>
+            <td>&quot;cpu&quot;</td>
+            <td>Model&#x27;s device (&quot;cpu&quot; or &quot;cuda&quot;)</td>
+        </tr>
+        <tr>
+            <td>likelihood_sharpness</td>
+            <td>float</td>
+            <td>6.0</td>
+            <td>Sharpness β of the probit link p(y=1|f) = Φ(β·f). Values &gt; 1 treat the labels as certain measurements; 1.0 is the standard Bernoulli likelihood</td>
         </tr>
     </table>
-
     <p><strong>Methods:</strong></p>
     <ul>
-        <li><code>fit(train_x, train_y, epsilon=0.05, verbose=False)</code> - Train the model using variational inference</li>
+        <li><code>fit(train_x, train_y, epsilon=0.05, verbose=False)</code> - Train the model on binary labels (0 or 1) using variational inference. <code>epsilon</code> is unused and kept for backward compatibility</li>
         <li><code>predict(x)</code> - Predict binary phase labels</li>
-        <li><code>predict_proba(x)</code> - Predict phase probabilities</li>
-        <li><code>acquisition(x, sampled_points=None, epsilon=0.05, vanilla_acq=False, distance_acq=True, requires_grad=False)</code> - Compute acquisition values for active learning</li>
-        <li><code>forward(x)</code> - Forward pass through the GP model</li>
+        <li><code>predict_proba(x)</code> - Predict the probability of phase 1</li>
+        <li><code>acquisition(x, sampled_points=None, epsilon=0.05, vanilla_acq=True, distance_acq=False, requires_grad=False)</code> - Acquisition values σ(x) / (|μ(x)| + epsilon) for active learning. <code>sampled_points</code>, <code>vanilla_acq</code> and <code>distance_acq</code> are accepted for interface compatibility and are not used by this model</li>
+        <li><code>forward(x)</code> - Forward pass through the GP model. The covariance module receives scaled inputs; the mean module receives inputs in their original units</li>
     </ul>
 
     <h4>PhaseTransferGP</h4>
-    <p>Transfer Learning GP model for phase classification with multiple source models.</p>
+    <p>Transfer Learning GP model for phase classification with multiple source models. Each source model has a weight model (a <code>PhaseGP</code> trained on whether the source predicts the measured labels correctly) that determines how much the source is trusted at each location.</p>
 
     <pre><code>PhaseTransferGP(source_model_list, train_x, min_scale=None, max_scale=None,
-                prior_aggregation="linear", max_adaptive_power=5,
-                explorative_threshold=0.4, kernel_choice='matern32',
+                prior_aggregation=&quot;linear&quot;, max_adaptive_power=5,
+                explorative_threshold=0.4, kernel_choice=&#x27;matern32&#x27;,
                 lengthscale=0.3, learning_rate=0.1, training_iterations=120,
-                lengthscale_interval=(0.2,0.3), outputscale_interval=(1.0,4.0))</code></pre>
-
+                lengthscale_interval=(0.2,0.3), outputscale_interval=(1.0,4.0),
+                scale_inputs=True, device=&quot;cpu&quot;, likelihood_sharpness=6.0,
+                weight_readout_sharpness=1.0)</code></pre>
     <p>Additional parameters beyond PhaseGP:</p>
     <table class="parameter-table">
         <tr>
@@ -262,8 +305,8 @@
         <tr>
             <td>prior_aggregation</td>
             <td>str</td>
-            <td>'linear'</td>
-            <td>Method for aggregating priors: 'linear' or 'highest'</td>
+            <td>&#x27;linear&#x27;</td>
+            <td>Method for aggregating priors: &#x27;linear&#x27; or &#x27;highest&#x27;</td>
         </tr>
         <tr>
             <td>max_adaptive_power</td>
@@ -277,21 +320,213 @@
             <td>0.4</td>
             <td>Threshold for exploration vs exploitation (0 to 1)</td>
         </tr>
+        <tr>
+            <td>likelihood_sharpness</td>
+            <td>float</td>
+            <td>6.0</td>
+            <td>Sharpness of the probit link used to train all internal PhaseGPs (weight and target models)</td>
+        </tr>
+        <tr>
+            <td>weight_readout_sharpness</td>
+            <td>float</td>
+            <td>1.0</td>
+            <td>Sharpness used to turn the weight models&#x27; latent function into source weights after training. The weight-dependent formulas (prior aggregation, adaptive power, explorative threshold) are tuned for 1.0</td>
+        </tr>
     </table>
-
     <p><strong>Methods:</strong></p>
     <ul>
-        <li><code>fit(train_x, train_y, epsilon=0.05, verbose=False)</code> - Train the transfer learning model</li>
+        <li><code>fit(train_x, train_y, epsilon=0.05, verbose=False)</code> - Train the weight models and the target model</li>
         <li><code>predict(x)</code> - Predict binary phase labels</li>
-        <li><code>predict_proba(x)</code> - Predict phase probabilities using weighted combination</li>
-        <li><code>get_weight(x)</code> - Get the weight of the best source model at each input point</li>
-        <li><code>acquisition(x, sampled_points, epsilon=0.05, vanilla_acq=False, distance_acq=True, requires_grad=False)</code> - Compute acquisition function for transfer learning</li>
-        <li><code>forward(x)</code> - Forward pass combining source and target model predictions</li>
+        <li><code>predict_proba(x, return_all_data=False)</code> - Predict phase probabilities using the weighted combination of source and target; with <code>return_all_data=True</code> also returns (source probabilities, target probabilities, weights)</li>
+        <li><code>get_weight(x, requires_grad=False)</code> - Get the weight of the best source model at each input point</li>
+        <li><code>acquisition(x, sampled_points=None, epsilon=0.05, vanilla_acq=False, distance_acq=True, requires_grad=False)</code> - Compute acquisition function for transfer learning; <code>sampled_points</code> is required when <code>distance_acq=True</code></li>
+        <li><code>forward(x, return_all_data=False)</code> - Forward pass combining source and target model predictions</li>
     </ul>
 
     <h4>SKPhaseTransferGP</h4>
-    <p>Transfer Learning GP with scikit-learn compatible source models. Requires scikit-learn source models to have a predict_proba() method.</p>
-    <p>Inherits from PhaseTransferGP with same parameters. Differs in handling scikit-learn model predictions.</p>
+    <p>Transfer Learning GP with scikit-learn compatible source models. Requires scikit-learn source models to have <code>predict()</code> and <code>predict_proba()</code> methods.</p>
+    <p>Inherits from PhaseTransferGP with the same parameters, except <code>scale_inputs</code> (always True). Source probabilities enter the prior through <code>SKMultiGPMeanModule</code>.</p>
+    <p><strong>Methods:</strong></p>
+    <ul>
+        <li><code>chain_predict(x)</code> - Binary prediction using the minimum of the ensemble and source probabilities</li>
+    </ul>
+
+    <h4>SharpBernoulliLikelihood</h4>
+    <p>Bernoulli likelihood with a sharpened probit link, p(y=1|f) = Φ(sharpness · f). A sharpness above 1 makes a misclassified label very unlikely for a given latent value, so the labels are treated as certain measurements without inflating the latent scale. <code>sharpness=1.0</code> is equivalent to gpytorch's <code>BernoulliLikelihood</code>.</p>
+
+    <pre><code>SharpBernoulliLikelihood(sharpness=1.0)</code></pre>
+    <table class="parameter-table">
+        <tr>
+            <th>Parameter</th>
+            <th>Type</th>
+            <th>Default</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td>sharpness</td>
+            <td>float</td>
+            <td>1.0</td>
+            <td>Fixed multiplier applied to the latent function in the probit link</td>
+        </tr>
+    </table>
+
+    <h3>Functions</h3>
+
+    <h4>train_gp_model</h4>
+    <p>Train a GP model with variational inference (Adam optimizer, variational ELBO).</p>
+
+    <pre><code>train_gp_model(model, train_x, train_y, learning_rate, training_iterations,
+               verbose=False, device=&quot;cpu&quot;, likelihood_sharpness=1.0)</code></pre>
+    <table class="parameter-table">
+        <tr>
+            <th>Parameter</th>
+            <th>Type</th>
+            <th>Default</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td>model</td>
+            <td>ApproximateGP</td>
+            <td>required</td>
+            <td>GP model to train</td>
+        </tr>
+        <tr>
+            <td>train_x</td>
+            <td>torch.Tensor</td>
+            <td>required</td>
+            <td>Training inputs, shape (n, d)</td>
+        </tr>
+        <tr>
+            <td>train_y</td>
+            <td>torch.Tensor</td>
+            <td>required</td>
+            <td>Binary training labels (0 or 1), shape (n,)</td>
+        </tr>
+        <tr>
+            <td>learning_rate</td>
+            <td>float</td>
+            <td>required</td>
+            <td>Learning rate for the Adam optimizer</td>
+        </tr>
+        <tr>
+            <td>training_iterations</td>
+            <td>int</td>
+            <td>required</td>
+            <td>Number of optimization iterations</td>
+        </tr>
+        <tr>
+            <td>verbose</td>
+            <td>bool</td>
+            <td>False</td>
+            <td>Whether to print training progress</td>
+        </tr>
+        <tr>
+            <td>device</td>
+            <td>str</td>
+            <td>&quot;cpu&quot;</td>
+            <td>Device where the training is performed</td>
+        </tr>
+        <tr>
+            <td>likelihood_sharpness</td>
+            <td>float</td>
+            <td>1.0</td>
+            <td>Sharpness of the probit link (PhaseGP.fit passes the model&#x27;s likelihood_sharpness)</td>
+        </tr>
+    </table>
+    <p><strong>Returns:</strong> tuple (model, likelihood) - Trained model and its SharpBernoulliLikelihood</p>
+
+    <div class="page-break"></div>
+
+    <!-- Priors Module -->
+    <h2 id="priors">priors.py</h2>
+    <p>Informed prior mean functions for transfer learning. Source predictions in the latent space, weighted by their learned reliability, are used as the mean function of the target GP. Source and weight models are frozen (evaluation mode, no gradients).</p>
+
+    <h3>Classes</h3>
+
+    <h4>MultiGPMeanModule</h4>
+    <p>Prior mean from multiple GP source models. Used by <code>PhaseTransferGP</code>.</p>
+
+    <pre><code>MultiGPMeanModule(source_model_list, weight_model_list, prior_aggregation=&quot;linear&quot;, device=&quot;cpu&quot;)</code></pre>
+    <table class="parameter-table">
+        <tr>
+            <th>Parameter</th>
+            <th>Type</th>
+            <th>Default</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td>source_model_list</td>
+            <td>list</td>
+            <td>required</td>
+            <td>Pre-trained PhaseGP source models</td>
+        </tr>
+        <tr>
+            <td>weight_model_list</td>
+            <td>list</td>
+            <td>required</td>
+            <td>PhaseGP weight models, one per source</td>
+        </tr>
+        <tr>
+            <td>prior_aggregation</td>
+            <td>str</td>
+            <td>&#x27;linear&#x27;</td>
+            <td>&#x27;linear&#x27;: Σᵢ μᵢ(x) · wᵢ(x)^(|μᵢ(x)|+1); &#x27;highest&#x27;: w(x) · μ(x) of the most reliable source</td>
+        </tr>
+        <tr>
+            <td>device</td>
+            <td>str</td>
+            <td>&quot;cpu&quot;</td>
+            <td>Device where the prior is stored</td>
+        </tr>
+    </table>
+
+    <h4>SKMultiGPMeanModule</h4>
+    <p>Prior mean from scikit-learn compatible source models. Used by <code>SKPhaseTransferGP</code>. Source probabilities p are mapped to the latent space with the probit transformation f = Φ⁻¹(clamp(p, ε, 1−ε)), matching the probit likelihood of the target GP; the aggregation methods are the same as in MultiGPMeanModule.</p>
+
+    <pre><code>SKMultiGPMeanModule(source_model_list, weight_model_list, prior_aggregation=&quot;linear&quot;, epsilon=0.05, device=&quot;cpu&quot;)</code></pre>
+    <table class="parameter-table">
+        <tr>
+            <th>Parameter</th>
+            <th>Type</th>
+            <th>Default</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td>source_model_list</td>
+            <td>list</td>
+            <td>required</td>
+            <td>scikit-learn compatible source models</td>
+        </tr>
+        <tr>
+            <td>weight_model_list</td>
+            <td>list</td>
+            <td>required</td>
+            <td>PhaseGP weight models, one per source</td>
+        </tr>
+        <tr>
+            <td>prior_aggregation</td>
+            <td>str</td>
+            <td>&#x27;linear&#x27;</td>
+            <td>Aggregation method: &#x27;linear&#x27; or &#x27;highest&#x27;</td>
+        </tr>
+        <tr>
+            <td>epsilon</td>
+            <td>float</td>
+            <td>0.05</td>
+            <td>Clamping value for the probit transformation (latent values within about ±1.64)</td>
+        </tr>
+        <tr>
+            <td>device</td>
+            <td>str</td>
+            <td>&quot;cpu&quot;</td>
+            <td>Device where the prior is stored</td>
+        </tr>
+    </table>
+
+    <h4>GPMeanModule</h4>
+    <p>Prior mean from a single GP source model: μ_source(x) · w(x). Not used by the transfer models; MultiGPMeanModule with one source behaves similarly.</p>
+
+    <pre><code>GPMeanModule(source_model, weight_model)</code></pre>
 
     <div class="page-break"></div>
 
@@ -304,11 +539,10 @@
     <h4>source_model_pruner</h4>
     <p>Select diverse source models from a collection based on phase diagram similarity.</p>
 
-    <pre><code>source_model_pruner(source_model_list, x_min=None, x_max=None, 
+    <pre><code>source_model_pruner(source_model_list, x_min=None, x_max=None,
                     y_min=None, y_max=None, grid_size=100,
-                    acc_threshold=0.9, min_intersection_regions=3, 
+                    acc_threshold=0.9, min_intersection_regions=3,
                     intersection_tol=5, return_index=False)</code></pre>
-
     <table class="parameter-table">
         <tr>
             <th>Parameter</th>
@@ -377,7 +611,6 @@
             <td>If True, also return indices of selected models</td>
         </tr>
     </table>
-
     <p><strong>Returns:</strong> List of selected diverse models, or tuple (selected_models, selected_indices) if return_index=True</p>
 
     <h4>similarity_checker</h4>
@@ -385,7 +618,6 @@
 
     <pre><code>similarity_checker(phase_diagram1, phase_diagram2, acc_threshold=0.8,
                    min_intersection_regions=3, intersection_tol=5)</code></pre>
-
     <table class="parameter-table">
         <tr>
             <th>Parameter</th>
@@ -424,7 +656,6 @@
             <td>Dilation radius for boundary tolerance (pixels)</td>
         </tr>
     </table>
-
     <p><strong>Returns:</strong> bool - True if diagrams are similar, False otherwise</p>
 
     <h4>source_diagram_pruner</h4>
@@ -432,7 +663,6 @@
 
     <pre><code>source_diagram_pruner(phase_diagram_list, acc_threshold=0.9,
                       min_intersection_regions=3, intersection_tol=5)</code></pre>
-
     <table class="parameter-table">
         <tr>
             <th>Parameter</th>
@@ -465,8 +695,15 @@
             <td>Boundary tolerance in pixels</td>
         </tr>
     </table>
-
     <p><strong>Returns:</strong> list - Selected diverse phase diagrams</p>
+
+    <h4>Helper functions</h4>
+    <ul>
+        <li><code>tolerant_phase_disagreement(A, B, radius=1)</code> - Binary map of disagreement between two phase diagrams, tolerant to boundary shifts of <code>radius</code> pixels</li>
+        <li><code>num_connected_regions(map)</code> - Number of connected regions in a binary map</li>
+        <li><code>num_holes(map)</code> - Number of topological holes (persistent homology, requires gudhi)</li>
+        <li><code>topology_metrics(map)</code> - Tuple (number of connected regions, number of holes)</li>
+    </ul>
 
     <div class="page-break"></div>
 
@@ -479,8 +716,7 @@
     <h4>ensure_tensor</h4>
     <p>Convert input to PyTorch tensor if not already.</p>
 
-    <pre><code>ensure_tensor(x, dtype=torch.float32)</code></pre>
-
+    <pre><code>ensure_tensor(x, dtype=torch.float32, device=&quot;cpu&quot;)</code></pre>
     <table class="parameter-table">
         <tr>
             <th>Parameter</th>
@@ -498,23 +734,21 @@
             <td>dtype</td>
             <td>torch.dtype</td>
             <td>torch.float32</td>
-            <td>Desired tensor data type</td>
+            <td>Desired tensor data type (applied when converting non-tensors)</td>
         </tr>
         <tr>
             <td>device</td>
-            <td>string</td>
-            <td>"cpu" or "cuda"</td>
-            <td>Desired device</td>
+            <td>str</td>
+            <td>&quot;cpu&quot;</td>
+            <td>Desired device (&quot;cpu&quot; or &quot;cuda&quot;)</td>
         </tr>
     </table>
-
     <p><strong>Returns:</strong> torch.Tensor - Input as a PyTorch tensor</p>
 
     <h4>ensure_numpy</h4>
     <p>Convert input to NumPy array if not already.</p>
 
     <pre><code>ensure_numpy(x)</code></pre>
-
     <table class="parameter-table">
         <tr>
             <th>Parameter</th>
@@ -527,16 +761,15 @@
             <td>Input data</td>
         </tr>
     </table>
-
     <p><strong>Returns:</strong> np.ndarray - Input as a NumPy array</p>
 
     <h4>brute_sample_new_points</h4>
-    <p>Select new sampling points using brute force evaluation of acquisition function with spacing constraints when batch sampling.</p>
+    <p>Select new sampling points by evaluating the acquisition function on a set of candidates, with spacing constraints when batch sampling.</p>
 
     <pre><code>brute_sample_new_points(model, candidates, sampled_points=None, n_sample=1,
-                  frac_distance_thresh=0.1, epsilon=0.05, 
-                  vanilla_acq=False, distance_acq=True, return_index=False)</code></pre>
-
+                        frac_distance_thresh=0.1, epsilon=0.05,
+                        vanilla_acq=False, distance_acq=True, return_index=False,
+                        acquisition_fn=None)</code></pre>
     <table class="parameter-table">
         <tr>
             <th>Parameter</th>
@@ -572,7 +805,7 @@
             <td>frac_distance_thresh</td>
             <td>float</td>
             <td>0.1</td>
-            <td>Minimum distance between points as fraction of domain</td>
+            <td>Minimum distance between selected points, in scaled [0,1] units</td>
         </tr>
         <tr>
             <td>epsilon</td>
@@ -598,18 +831,24 @@
             <td>False</td>
             <td>If True, also return indices of selected points</td>
         </tr>
+        <tr>
+            <td>acquisition_fn</td>
+            <td>callable</td>
+            <td>None</td>
+            <td>Custom acquisition function acquisition_fn(model, x) -&gt; tensor of shape (n,); if None, model.acquisition is used</td>
+        </tr>
     </table>
-
     <p><strong>Returns:</strong> torch.Tensor or tuple - Selected points, or (selected_points, selected_indices) if return_index=True</p>
 
     <h4>gradient_sample_new_points</h4>
-    <p>Select new sampling points using gradient-based optimization of acquisition function with spacing constraints when batch sampling.</p>
+    <p>Select new sampling points using gradient-based optimization of the acquisition function (BoTorch <code>optimize_acqf</code>) with spacing constraints when batch sampling.</p>
 
     <pre><code>gradient_sample_new_points(model, sampled_points=None, n_sample=1,
                            frac_distance_thresh=0.1, epsilon=0.05,
                            vanilla_acq=False, distance_acq=True,
-                           num_restarts=10, raw_samples=512)</code></pre>
-
+                           num_restarts=10, raw_samples=512,
+                           inequality_constrain=None, ic_generator=None,
+                           acquisition_fn=None)</code></pre>
     <table class="parameter-table">
         <tr>
             <th>Parameter</th>
@@ -621,7 +860,7 @@
             <td>model</td>
             <td>GP model</td>
             <td>required</td>
-            <td>GP model with acquisition method</td>
+            <td>GP model with acquisition method; the search domain is [min_scale, max_scale]</td>
         </tr>
         <tr>
             <td>sampled_points</td>
@@ -639,7 +878,7 @@
             <td>frac_distance_thresh</td>
             <td>float</td>
             <td>0.1</td>
-            <td>Minimum distance between points as fraction of domain</td>
+            <td>Distance (scaled units) below which candidates are penalised when batch sampling</td>
         </tr>
         <tr>
             <td>epsilon</td>
@@ -671,16 +910,32 @@
             <td>512</td>
             <td>Number of raw samples for initialization</td>
         </tr>
+        <tr>
+            <td>inequality_constrain</td>
+            <td>callable</td>
+            <td>None</td>
+            <td>Nonlinear inequality constraint passed to optimize_acqf (feasible when ≥ 0)</td>
+        </tr>
+        <tr>
+            <td>ic_generator</td>
+            <td>callable</td>
+            <td>None</td>
+            <td>Initial-condition generator for constrained optimization (BoTorch gen_batch_initial_conditions if None)</td>
+        </tr>
+        <tr>
+            <td>acquisition_fn</td>
+            <td>callable</td>
+            <td>None</td>
+            <td>Custom acquisition function acquisition_fn(model, x); must support gradients</td>
+        </tr>
     </table>
-
     <p><strong>Returns:</strong> torch.Tensor - Selected points, shape (n_sample, d)</p>
 
     <h4>get_grid</h4>
-    <p>Generate a regular 2D grid for phase diagram evaluation.</p>
+    <p>Generate a regular grid (2D, or N-D when x_min and x_max are lists) for phase diagram evaluation.</p>
 
     <pre><code>get_grid(x_min=0, x_max=1, grid_size=100, return_coordinates=False,
-         y_min=None, y_max=None)</code></pre>
-
+         y_min=None, y_max=None, device=&quot;cpu&quot;)</code></pre>
     <table class="parameter-table">
         <tr>
             <th>Parameter</th>
@@ -726,22 +981,22 @@
         </tr>
         <tr>
             <td>device</td>
-            <td>string</td>
-            <td>"cpu" or "cuda"</td>
-            <td>Desired device</td>
+            <td>str</td>
+            <td>&quot;cpu&quot;</td>
+            <td>Desired device (&quot;cpu&quot; or &quot;cuda&quot;)</td>
         </tr>
     </table>
-
-    <p><strong>Returns:</strong> torch.Tensor or tuple:
-            - If return_coordinates=False: Grid points, shape (grid_size^N, N)
-            - If return_coordinates=True: (grid_points, coord_list)
-              where coord_list is a list of coordinate vectors for each dimension</p>
+    <p><strong>Returns:</strong> torch.Tensor or tuple:</p>
+    <ul>
+        <li>If return_coordinates=False: grid points, shape (grid_size^N, N)</li>
+        <li>If return_coordinates=True, 2D mode: (grid_points, x_coords, y_coords)</li>
+        <li>If return_coordinates=True, N-D mode: (grid_points, coord_list), a list of coordinate vectors for each dimension</li>
+    </ul>
 
     <h4>scaler</h4>
     <p>Scale data to [0,1] range using min-max normalization.</p>
 
     <pre><code>scaler(x, min_scale, max_scale)</code></pre>
-
     <table class="parameter-table">
         <tr>
             <th>Parameter</th>
@@ -764,14 +1019,12 @@
             <td>Maximum values for each dimension</td>
         </tr>
     </table>
-
     <p><strong>Returns:</strong> torch.Tensor - Scaled data in [0, 1] range</p>
 
     <h4>set_seeds</h4>
     <p>Set random seeds for reproducibility across PyTorch and NumPy.</p>
 
     <pre><code>set_seeds(seed)</code></pre>
-
     <table class="parameter-table">
         <tr>
             <th>Parameter</th>
@@ -796,12 +1049,11 @@
     <h4>model_diagram_plot</h4>
     <p>Generate various 2D plots from a trained GP model.</p>
 
-    <pre><code>model_diagram_plot(model, plot_type="phase", x_min=None, x_max=None,
-                   y_min=None, y_max=None, grid_size=100, 
+    <pre><code>model_diagram_plot(model, plot_type=&quot;phase&quot;, x_min=None, x_max=None,
+                   y_min=None, y_max=None, grid_size=100,
                    sampled_points=None, phase_labels=None, title=None,
-                   xlabel="Parameter 1", ylabel="Parameter 2", 
+                   xlabel=&quot;Parameter 1&quot;, ylabel=&quot;Parameter 2&quot;,
                    figsize=(7,6), cmap=None, plot_boundary=False)</code></pre>
-
     <table class="parameter-table">
         <tr>
             <th>Parameter</th>
@@ -818,8 +1070,8 @@
         <tr>
             <td>plot_type</td>
             <td>str</td>
-            <td>"phase"</td>
-            <td>Type of plot ('phase', 'probability', 'acquisition')</td>
+            <td>&quot;phase&quot;</td>
+            <td>Type of plot (&#x27;phase&#x27;, &#x27;probability&#x27;, &#x27;acquisition&#x27;)</td>
         </tr>
         <tr>
             <td>x_min</td>
@@ -861,7 +1113,7 @@
             <td>phase_labels</td>
             <td>list</td>
             <td>None</td>
-            <td>Names for phase 0 and phase 1</td>
+            <td>Names for phase 0 and phase 1 (used by the &#x27;phase&#x27; plot)</td>
         </tr>
         <tr>
             <td>title</td>
@@ -872,13 +1124,13 @@
         <tr>
             <td>xlabel</td>
             <td>str</td>
-            <td>"Parameter 1"</td>
+            <td>&quot;Parameter 1&quot;</td>
             <td>Label for x-axis</td>
         </tr>
         <tr>
             <td>ylabel</td>
             <td>str</td>
-            <td>"Parameter 2"</td>
+            <td>&quot;Parameter 2&quot;</td>
             <td>Label for y-axis</td>
         </tr>
         <tr>
@@ -900,17 +1152,16 @@
             <td>Whether to show phase boundaries as contour lines</td>
         </tr>
     </table>
-
     <p><strong>Returns:</strong> tuple (fig, ax) - Matplotlib figure and axes objects</p>
 
     <h4>phase_diagram_plot</h4>
     <p>Plot a phase diagram with optional contour lines at phase boundaries.</p>
 
     <pre><code>phase_diagram_plot(phase_diagram, x_coords=None, y_coords=None,
-                   phase_labels=None, title=None, xlabel="Parameter 1",
-                   ylabel="Parameter 2", figsize=(7,6), cmap='coolwarm',
+                   phase_labels=None, title=None, xlabel=&quot;Parameter 1&quot;,
+                   ylabel=&quot;Parameter 2&quot;, figsize=(7,6),
+                   cmap=ListedColormap([&quot;#be96c5ff&quot;, &quot;#fdc684ff&quot;]),
                    plot_boundary=False)</code></pre>
-
     <table class="parameter-table">
         <tr>
             <th>Parameter</th>
@@ -951,13 +1202,13 @@
         <tr>
             <td>xlabel</td>
             <td>str</td>
-            <td>"Parameter 1"</td>
+            <td>&quot;Parameter 1&quot;</td>
             <td>X-axis label</td>
         </tr>
         <tr>
             <td>ylabel</td>
             <td>str</td>
-            <td>"Parameter 2"</td>
+            <td>&quot;Parameter 2&quot;</td>
             <td>Y-axis label</td>
         </tr>
         <tr>
@@ -969,8 +1220,8 @@
         <tr>
             <td>cmap</td>
             <td>str/colormap</td>
-            <td>'coolwarm'</td>
-            <td>Colormap for phases</td>
+            <td>two-colour ListedColormap</td>
+            <td>Colormap for phases (purple for phase 0, orange for phase 1)</td>
         </tr>
         <tr>
             <td>plot_boundary</td>
@@ -979,7 +1230,6 @@
             <td>Whether to draw black contour lines at boundaries</td>
         </tr>
     </table>
-
     <p><strong>Returns:</strong> tuple (fig, ax) - Matplotlib figure and axes objects</p>
 
     <h4>phase_diagram_probability_plot</h4>
@@ -987,10 +1237,9 @@
 
     <pre><code>phase_diagram_probability_plot(phase_probabilities, x_coords=None,
                                 y_coords=None, title=None,
-                                xlabel="Parameter 1", ylabel="Parameter 2",
-                                figsize=(7,6), cmap='viridis',
+                                xlabel=&quot;Parameter 1&quot;, ylabel=&quot;Parameter 2&quot;,
+                                figsize=(7,6), cmap=&#x27;viridis&#x27;,
                                 plot_boundary=True)</code></pre>
-
     <table class="parameter-table">
         <tr>
             <th>Parameter</th>
@@ -1025,13 +1274,13 @@
         <tr>
             <td>xlabel</td>
             <td>str</td>
-            <td>"Parameter 1"</td>
+            <td>&quot;Parameter 1&quot;</td>
             <td>X-axis label</td>
         </tr>
         <tr>
             <td>ylabel</td>
             <td>str</td>
-            <td>"Parameter 2"</td>
+            <td>&quot;Parameter 2&quot;</td>
             <td>Y-axis label</td>
         </tr>
         <tr>
@@ -1043,7 +1292,7 @@
         <tr>
             <td>cmap</td>
             <td>str/colormap</td>
-            <td>'viridis'</td>
+            <td>&#x27;viridis&#x27;</td>
             <td>Colormap for probability values</td>
         </tr>
         <tr>
@@ -1053,17 +1302,15 @@
             <td>Whether to highlight the p=0.5 decision boundary</td>
         </tr>
     </table>
-
     <p><strong>Returns:</strong> tuple (fig, ax) - Matplotlib figure and axes objects</p>
 
     <h4>phase_acquisition_plot</h4>
     <p>Plot acquisition function values for active learning visualization.</p>
 
     <pre><code>phase_acquisition_plot(acquisition_values, x_coords=None, y_coords=None,
-                       title=None, xlabel="Parameter 1",
-                       ylabel="Parameter 2", figsize=(7, 6),
-                       cmap='plasma', show_maximum=True)</code></pre>
-
+                       title=None, xlabel=&quot;Parameter 1&quot;,
+                       ylabel=&quot;Parameter 2&quot;, figsize=(7, 6),
+                       cmap=&#x27;plasma&#x27;, show_maximum=True)</code></pre>
     <table class="parameter-table">
         <tr>
             <th>Parameter</th>
@@ -1098,13 +1345,13 @@
         <tr>
             <td>xlabel</td>
             <td>str</td>
-            <td>"Parameter 1"</td>
+            <td>&quot;Parameter 1&quot;</td>
             <td>X-axis label</td>
         </tr>
         <tr>
             <td>ylabel</td>
             <td>str</td>
-            <td>"Parameter 2"</td>
+            <td>&quot;Parameter 2&quot;</td>
             <td>Y-axis label</td>
         </tr>
         <tr>
@@ -1116,7 +1363,7 @@
         <tr>
             <td>cmap</td>
             <td>str/colormap</td>
-            <td>'plasma'</td>
+            <td>&#x27;plasma&#x27;</td>
             <td>Colormap for acquisition values</td>
         </tr>
         <tr>
@@ -1126,7 +1373,6 @@
             <td>Whether to mark the maximum acquisition point</td>
         </tr>
     </table>
-
     <p><strong>Returns:</strong> tuple (fig, ax) - Matplotlib figure and axes objects</p>
 
 </body>
