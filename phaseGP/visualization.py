@@ -13,7 +13,7 @@ The visualizations are designed to provide intuitive understanding of:
 - Transfer learning source contributions
 
 Author: Eduardo Gonzalez Garcia (e.gonzalez.garcia@tue.nl)
-Version: 0.1.0
+Version: 0.2.0
 """
 import matplotlib.pyplot as plt
 import numpy as np

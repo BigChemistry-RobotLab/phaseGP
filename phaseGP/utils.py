@@ -14,7 +14,7 @@ Key Functionality:
 - Random seed management
 
 Author: Eduardo Gonzalez Garcia (e.gonzalez.garcia@tue.nl)
-Version: 0.1.0
+Version: 0.2.0
 """
 import gpytorch
 import torch

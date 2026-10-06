@@ -23,7 +23,7 @@ Dependencies:
     - sklearn.metrics: For accuracy computation
 
 Author: Eduardo Gonzalez Garcia (e.gonzalez.garcia@tue.nl)
-Version: 0.1.0
+Version: 0.2.0
 """
 import torch
 import numpy as np

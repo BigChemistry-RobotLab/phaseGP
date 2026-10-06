@@ -15,7 +15,7 @@ Classes:
     SKMultiGPMeanModule: Multiple scikit-learn compatible source models
 
 Author: Eduardo Gonzalez Garcia (e.gonzalez.garcia@tue.nl)
-Version: 0.1.0
+Version: 0.2.0
 """
 import torch
 import gpytorch
@@ -247,16 +247,18 @@ class SKMultiGPMeanModule(gpytorch.means.Mean):
     This class adapts the multi-source prior concept to work with non-GP
     models that follow the scikit-learn API (e.g., Random Forests, SVMs).
     Since these models don't provide latent function values, their probability
-    predictions are transformed to the latent space using a logit function.
+    predictions are transformed to the latent space using the inverse of the
+    standard normal CDF (probit), matching the Bernoulli (probit) likelihood
+    of the target GP.
     
-    The logit transformation with epsilon regularization maps probabilities
-    from [0,1] to ~(-3,3) for ε=0.05, making them suitable as GP mean function values.
+    Probabilities are clamped to [ε, 1-ε] before the transformation, which maps
+    them to ~(-1.64, 1.64) for ε=0.05, making them suitable as GP mean function values.
     
     Attributes:
         source_model_list (list): List of sklearn-compatible models
         weight_model_list (list): List of GP models for reliability weights
         prior_aggregation (str): Method for combining predictions
-        epsilon (float): Regularization for logit transformation
+        epsilon (float): Clamping value for the probit transformation
     """
     
     def __init__(self, source_model_list, weight_model_list, prior_aggregation="linear", epsilon=0.05, device="cpu"):
@@ -267,7 +269,7 @@ class SKMultiGPMeanModule(gpytorch.means.Mean):
             source_model_list (list): List of sklearn-compatible models
             weight_model_list (list): List of PhaseGP weight models
             prior_aggregation (str): Aggregation method ('linear' or 'highest')
-            epsilon (float): Regularization parameter for logit transform
+            epsilon (float): Clamping value for the probit transformation
         """
         super().__init__()
         self.prior_aggregation = prior_aggregation
@@ -276,17 +278,35 @@ class SKMultiGPMeanModule(gpytorch.means.Mean):
         self.epsilon = epsilon
         self.device = device
 
+    def _latent_from_proba(self, source_model, x):
+        """
+        Probability of phase 1 from an sklearn model, mapped to the latent space
+        with the probit transformation f = Φ^{-1}(clamp(p, ε, 1-ε)).
+        """
+        proba = source_model.predict_proba(x.cpu())
+        
+        # Handle binary classification output shape
+        if(proba.ndim == 2):
+            proba = proba[:,1]  # Take probability of positive class
+        proba = torch.as_tensor(proba, dtype=torch.float32, device=self.device)
+        proba = proba.clamp(self.epsilon, 1 - self.epsilon)
+        
+        standard_normal = torch.distributions.Normal(
+            torch.tensor(0., device=self.device), torch.tensor(1., device=self.device)
+        )
+        return standard_normal.icdf(proba)
+
     def forward(self, x):
         """
         Compute aggregated prior from scikit-learn source models.
         
         The process differs from GP sources:
         1. Get probability predictions from sklearn models
-        2. Transform probabilities to latent space using regularized logit
+        2. Transform probabilities to latent space using the probit transformation
         3. Apply same aggregation strategies as MultiGPMeanModule
         
-        The logit transformation is: f = log((p + ε) / (1 - p + ε))
-        where p is the predicted probability and ε prevents numerical issues.
+        The probit transformation is: f = Φ^{-1}(clamp(p, ε, 1-ε))
+        where p is the predicted probability and ε prevents infinite values.
         
         Args:
             x (torch.Tensor): Input locations of shape (n, d)
@@ -302,17 +322,8 @@ class SKMultiGPMeanModule(gpytorch.means.Mean):
                 full_pred = torch.zeros(x.shape[0], device=self.device)
                 
                 for source_model, weight_model in zip(self.source_model_list, self.weight_model_list):
-                    # Get probability predictions from sklearn model
-                    mean_pred = source_model.predict_proba(x.cpu())
-                    
-                    # Handle binary classification output shape
-                    if(mean_pred.ndim == 2):
-                        mean_pred = mean_pred[:,1]  # Take probability of positive class
-                    mean_pred = torch.tensor(mean_pred, device=self.device)
-
-                    # Transform probability to latent space using regularized logit
-                    # This maps [0,1] to ~(-3,3) for ε=0.05 suitable for GP mean function
-                    mean_pred = torch.log((mean_pred + self.epsilon) / (1 - mean_pred + self.epsilon))
+                    # Get sklearn probability prediction in latent space
+                    mean_pred = self._latent_from_proba(source_model, x)
 
                     # Get reliability weight from GP model
                     weight_pred = weight_model(x)
@@ -337,12 +348,8 @@ class SKMultiGPMeanModule(gpytorch.means.Mean):
                     weight_pred = weight_model.likelihood(latent_weight_pred).mean
                     weight_list.append(weight_pred)
 
-                    # Get sklearn model probability prediction
-                    mean_pred = source_model.predict_proba(x.cpu())[:,1]
-                    mean_pred = torch.tensor(mean_pred, device=self.device)
-
-                    # Transform to latent space
-                    mean_pred = torch.log((mean_pred + self.epsilon) / (1 - mean_pred + self.epsilon))
+                    # Get sklearn probability prediction in latent space
+                    mean_pred = self._latent_from_proba(source_model, x)
 
                     source_mean_list.append(mean_pred)
                 

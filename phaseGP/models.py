@@ -14,16 +14,58 @@ Key Features:
 - Transfer learning with automatic source model weighting
 
 Author: Eduardo Gonzalez Garcia (e.gonzalez.garcia@tue.nl)
-Version: 0.1.0
+Version: 0.2.0
 """
 import warnings
 import torch
 import gpytorch
 
+from gpytorch.functions import log_normal_cdf
+
 from .priors import MultiGPMeanModule, SKMultiGPMeanModule
 from .utils import ensure_tensor, get_base_kernel, scaler
 
-__all__ = ['PhaseGP', 'PhaseTransferGP', 'SKPhaseTransferGP', 'train_gp_model']
+__all__ = ['PhaseGP', 'PhaseTransferGP', 'SKPhaseTransferGP', 'SharpBernoulliLikelihood', 'train_gp_model']
+
+# =============================================================================
+# Likelihood
+# =============================================================================
+
+class SharpBernoulliLikelihood(gpytorch.likelihoods.BernoulliLikelihood):
+    """
+    Bernoulli likelihood with a sharpened probit link, p(y=1|f) = Phi(sharpness * f).
+    
+    The phase labels are certain measurements, not noisy observations. A
+    sharpness > 1 makes a misclassified label very unlikely for a given latent
+    value, so the model fits the measured labels closely without inflating the
+    latent scale (and therefore without changing the scale seen by informed
+    priors and acquisition functions). sharpness = 1 recovers the standard
+    gpytorch BernoulliLikelihood.
+    
+    Attributes:
+        sharpness (float): Fixed multiplier applied to the latent function in the probit link
+    """
+    def __init__(self, sharpness=1.0):
+        super().__init__()
+        self.sharpness = float(sharpness)
+
+    def forward(self, function_samples, *args, **kwargs):
+        return super().forward(function_samples * self.sharpness, *args, **kwargs)
+
+    def marginal(self, function_dist, *args, **kwargs):
+        # E[Phi(s f)] with f ~ N(mu, var) is Phi(s mu / sqrt(1 + s^2 var))
+        mean = function_dist.mean
+        var = function_dist.variance
+        link = mean.mul(self.sharpness).div(torch.sqrt(1 + self.sharpness**2 * var))
+        output_probs = torch.distributions.Normal(0, 1).cdf(link)
+        return torch.distributions.Bernoulli(probs=output_probs)
+
+    def expected_log_prob(self, observations, function_dist, *args, **kwargs):
+        # Labels in {0, 1} -> signs in {-1, 1}
+        signs = observations.mul(2).sub(1)
+        log_prob_lambda = lambda function_samples: log_normal_cdf(function_samples.mul(self.sharpness).mul(signs))
+        return self.quadrature(log_prob_lambda, function_dist)
+
 # =============================================================================
 # Unified GP Model
 # =============================================================================
@@ -49,6 +91,7 @@ class PhaseGP(gpytorch.models.ApproximateGP):
         mean_module: GP mean function (constant by default)
         covar_module: GP covariance function with specified kernel
         likelihood: Bernoulli likelihood for binary classification
+        likelihood_sharpness (float): Sharpness of the probit link (labels treated as certain)
         scale_inputs: whether to internally scale the inputs of the model
         device: Device where the model is stored (cpu or cuda)
     """
@@ -64,7 +107,8 @@ class PhaseGP(gpytorch.models.ApproximateGP):
             lengthscale_interval = (0.2,0.3),
             outputscale_interval = (1.0,4.0),
             scale_inputs = True,
-            device = "cpu"
+            device = "cpu",
+            likelihood_sharpness = 6.0
             ):
         """
         Initialize the Phase GP model.
@@ -77,6 +121,7 @@ class PhaseGP(gpytorch.models.ApproximateGP):
         self.outputscale_interval = outputscale_interval
         self.scale_inputs = scale_inputs
         self.device = device
+        self.likelihood_sharpness = likelihood_sharpness
         
         # Set up input scaling parameters for normalization to [0,1]
         if(min_scale is None):
@@ -149,29 +194,33 @@ class PhaseGP(gpytorch.models.ApproximateGP):
         """
         Forward pass through the GP model.
         
-        Computes the GP prior distribution at input locations. Note that inputs
-        are scaled to [0,1].
-        
+        Computes the GP prior distribution at input locations. The variational
+        strategy passes the inducing points (stored scaled to [0,1]) stacked on
+        top of the raw inputs. The covariance module works on scaled inputs,
+        while the mean module receives the inputs in their original units, so
+        that informed priors wrapping other models (which scale their inputs
+        themselves) are evaluated at the correct locations.
+
         Args:
             x (torch.Tensor): Input locations of shape (n, d)
-            
+
         Returns:
             gpytorch.distributions.MultivariateNormal: GP prior distribution
         """
 
         if self.scale_inputs:
-            x = x.clone()
-            # Scale, but detach scaling from gradient
-            scaled_x = scaler(
-                x[self.inducing_points_size:], 
-                self.min_scale, 
-                self.max_scale
-            ).detach()
+            n = self.inducing_points_size
+            scaled_x = x.clone()
+            raw_x = x.clone()
+            # Scale the raw inputs, but detach scaling from gradient
+            scaled_x[n:] = scaler(x[n:], self.min_scale, self.max_scale).detach()
+            # Map the (already scaled) inducing points back to original units
+            raw_x[:n] = (x[:n] * (self.max_scale - self.min_scale) + self.min_scale).detach()
+        else:
+            scaled_x = raw_x = x
 
-            x[self.inducing_points_size:] = scaled_x
-            
-        mean_x = self.mean_module(x)
-        covar_x = self.covar_module(x)
+        mean_x = self.mean_module(raw_x)
+        covar_x = self.covar_module(scaled_x)
         return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
     
     def fit(self, train_x, train_y, epsilon=0.05, verbose=False):
@@ -179,34 +228,31 @@ class PhaseGP(gpytorch.models.ApproximateGP):
         Train the GP model on binary classification data.
         
         Uses variational inference to fit the model parameters. The binary labels
-        are transformed to continuous latent values using a logit transformation
-        with epsilon regularization to avoid numerical issues.
-        
+        are passed directly to the Bernoulli (probit) likelihood, which expects
+        observations in {0, 1}.
+
         Args:
             train_x (torch.Tensor): Training inputs of shape (n, d)
             train_y (torch.Tensor): Binary training labels (0 or 1) of shape (n,)
-            epsilon (float): Regularization parameter for logit transformation
+            epsilon (float): Unused, kept for backward compatibility
             verbose (bool): Whether to print training progress
         """
         train_x = ensure_tensor(train_x, device=self.device)
         train_y = ensure_tensor(train_y, device=self.device)
 
         train_x = train_x.float()
-        train_y = train_y.flatten()
-
-        # Transform binary labels to continuous latent values using regularized logit
-        # This maps [0,1] to ~[-3, 3] with epsilon=0.05 preventing extreme values
-        latent_y = torch.log((train_y + epsilon) / (1 - train_y + epsilon))
+        train_y = train_y.flatten().float()
 
         # Train the model using variational inference
         self, self.likelihood = train_gp_model(
             self,
             train_x,
-            latent_y,
+            train_y,
             learning_rate=self.learning_rate,
             training_iterations=self.training_iterations,
             verbose=verbose,
-            device = self.device
+            device = self.device,
+            likelihood_sharpness = self.likelihood_sharpness
         )
         return
     
@@ -299,6 +345,7 @@ class PhaseTransferGP(torch.nn.Module):
         prior_aggregation (str): Method for combining source predictions
         max_adaptive_power (float): Maximum exponent for weight adaptation
         explorative_threshold (float): Threshold for exploration vs exploitation
+        weight_readout_sharpness (float): Sharpness used to read the source weights from the weight models
     """
 
     def __init__(
@@ -317,7 +364,9 @@ class PhaseTransferGP(torch.nn.Module):
             lengthscale_interval = (0.2,0.3),
             outputscale_interval = (1.0,4.0),
             scale_inputs = True,
-            device = "cpu"
+            device = "cpu",
+            likelihood_sharpness = 6.0,
+            weight_readout_sharpness = 1.0
             ):
         """
         Initialize the transfer learning GP model.
@@ -338,6 +387,10 @@ class PhaseTransferGP(torch.nn.Module):
             outputscale_interval (tuple): Prior bounds for outputscale
             scale_inputs: whether to internally scale the inputs of the model
             device: Device where the model is stored (cpu or cuda)
+            likelihood_sharpness (float): Sharpness of the probit link used to train all internal PhaseGPs
+            weight_readout_sharpness (float): Sharpness used to turn the weight models' latent into
+                source weights after training. The weight-dependent formulas (prior aggregation,
+                adaptive power, explorative threshold) are tuned for the soft score Phi(f), i.e. 1.0
         """
         super().__init__()
         
@@ -357,6 +410,8 @@ class PhaseTransferGP(torch.nn.Module):
         self.explorative_threshold = explorative_threshold
         self.scale_inputs = scale_inputs
         self.device = device
+        self.likelihood_sharpness = likelihood_sharpness
+        self.weight_readout_sharpness = weight_readout_sharpness
         # Set up input scaling parameters
         if(min_scale is None):
             warnings.warn("WARNING: No minimum value selected for interval -> min_scale = 0")
@@ -393,7 +448,8 @@ class PhaseTransferGP(torch.nn.Module):
             lengthscale_interval = lengthscale_interval,
             outputscale_interval = outputscale_interval,
             scale_inputs = scale_inputs,
-            device = self.device
+            device = self.device,
+            likelihood_sharpness = likelihood_sharpness
         ).to(device) for i in range(n_models)]
         
         # Create target model for the current task
@@ -408,7 +464,8 @@ class PhaseTransferGP(torch.nn.Module):
             lengthscale_interval = lengthscale_interval,
             outputscale_interval = outputscale_interval,
             scale_inputs = scale_inputs,
-            device = self.device
+            device = self.device,
+            likelihood_sharpness = likelihood_sharpness
         ).to(device)
 
     def forward(self, x, return_all_data=False):
@@ -527,6 +584,8 @@ class PhaseTransferGP(torch.nn.Module):
             
             # Train weight model to predict source reliability
             weight_model.fit(train_x, auxiliary_y, epsilon=epsilon)
+            # Read the weights as the soft score the weight formulas were tuned for
+            weight_model.likelihood = SharpBernoulliLikelihood(self.weight_readout_sharpness).to(self.device).eval()
 
         # Initialize target model with informed prior combining weighted sources
         self.target_model.mean_module = MultiGPMeanModule(
@@ -702,7 +761,9 @@ class SKPhaseTransferGP(PhaseTransferGP):
             training_iterations = 120,
             lengthscale_interval = (0.2,0.3),
             outputscale_interval = (1.0,4.0),
-            device = "cpu"
+            device = "cpu",
+            likelihood_sharpness = 6.0,
+            weight_readout_sharpness = 1.0
             ):
         """
         Initialize the scikit-learn compatible transfer learning GP.
@@ -725,7 +786,9 @@ class SKPhaseTransferGP(PhaseTransferGP):
             training_iterations = training_iterations,
             lengthscale_interval = lengthscale_interval,
             outputscale_interval = outputscale_interval,
-            device = device
+            device = device,
+            likelihood_sharpness = likelihood_sharpness,
+            weight_readout_sharpness = weight_readout_sharpness
         )
     
     def forward(self, x, return_all_data=False):
@@ -825,6 +888,8 @@ class SKPhaseTransferGP(PhaseTransferGP):
             
             # Train weight model
             weight_model.fit(train_x, auxiliary_y, epsilon=epsilon)
+            # Read the weights as the soft score the weight formulas were tuned for
+            weight_model.likelihood = SharpBernoulliLikelihood(self.weight_readout_sharpness).to(self.device).eval()
 
         # Initialize informed prior for sklearn models
         self.target_model.mean_module = SKMultiGPMeanModule(
@@ -871,7 +936,7 @@ class SKPhaseTransferGP(PhaseTransferGP):
         pred_points = torch.min(ensemble_predict, source_predicit)
         pred_points = (pred_points > 0.5).int()
         return pred_points
-def train_gp_model(model, train_x, train_y, learning_rate, training_iterations, verbose = False, device="cpu"):
+def train_gp_model(model, train_x, train_y, learning_rate, training_iterations, verbose = False, device="cpu", likelihood_sharpness=1.0):
     """
     Train a Gaussian Process model using variational inference.
     
@@ -886,6 +951,7 @@ def train_gp_model(model, train_x, train_y, learning_rate, training_iterations, 
         training_iterations (int): Number of optimization iterations
         verbose (bool): Whether to print training progress
         device: Device where the training is performed (cpu or cuda)
+        likelihood_sharpness (float): Sharpness of the probit link (1.0 = standard Bernoulli likelihood)
     Returns:
         tuple: (model, likelihood) - Trained model and likelihood
     """
@@ -893,7 +959,7 @@ def train_gp_model(model, train_x, train_y, learning_rate, training_iterations, 
     train_y = ensure_tensor(train_y, device=device)
     
     # Set up Bernoulli likelihood for binary classification
-    likelihood = gpytorch.likelihoods.BernoulliLikelihood().to(device)
+    likelihood = SharpBernoulliLikelihood(likelihood_sharpness).to(device)
     
     # Initialize Adam optimizer for all model parameters
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
